@@ -5,14 +5,16 @@
     alt="SmartFetch Logo"
     width="300">
 </p>
+
 <p align="center">
   A lightweight, blazing-fast system information tool written in pure C.
 </p>
+
 <p align="center">
-  <img src="https://img.shields.io/github/license/Saul-Goodman6/SmartFetch?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/github/stars/Saul-Goodman6/SmartFetch?style=for-the-badge" alt="Stars">
-  <img src="https://img.shields.io/github/forks/Saul-Goodman6/SmartFetch?style=for-the-badge" alt="Forks">
-  <img src="https://img.shields.io/github/issues/Saul-Goodman6/SmartFetch?style=for-the-badge" alt="Issues">
+  <img src="https://img.shields.io/github/license/Yassine-Jemi01/SmartFetch?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/github/stars/Yassine-Jemi01/SmartFetch?style=for-the-badge" alt="Stars">
+  <img src="https://img.shields.io/github/forks/Yassine-Jemi01/SmartFetch?style=for-the-badge" alt="Forks">
+  <img src="https://img.shields.io/github/issues/Yassine-Jemi01/SmartFetch?style=for-the-badge" alt="Issues">
 </p>
 
 ---
@@ -23,11 +25,11 @@
 
 ## Features
 
-- **Blazing Fast:** Built with pure C and Direct System APIs for minimal resource usage and maximum performance.
-- **Dynamic ASCII Art:** Automatically detects your Linux distribution (`Fedora`, `Arch`, `Debian`, etc.) and renders the corresponding logo.
-- **Terminal Color Palette:** Displays a colorful 16-color block palette at the bottom for aesthetic screenshots.
-- **Detailed System Insights:** Displays CPU specs, real-time temperatures, RAM type & usage (Linux, requires root or `cap_dac_read_search` — granted automatically by `make install`), display resolution, disk space, GPU, and OS age/uptime.
-- **Standard Build System:** Uses a clean `Makefile` for simple, scalable compilation across platforms.
+* **Blazing Fast:** Built with pure C and Direct System APIs for minimal resource usage and maximum performance.
+* **Dynamic ASCII Art:** Automatically detects your Linux distribution (`Fedora`, `Arch`, `Debian`, etc.) and renders the corresponding logo.
+* **Terminal Color Palette:** Displays a colorful 16-color block palette at the bottom for aesthetic screenshots.
+* **Detailed System Insights:** Displays CPU specs, real-time temperatures, RAM type & usage (Linux, requires root or `cap_dac_read_search` — granted automatically by `make install`), display resolution, disk space, GPU, and OS uptime.
+* **Standard Build System:** Uses a clean `Makefile` for simple, scalable compilation across platforms.
 
 ---
 
@@ -65,11 +67,11 @@ During `sudo make install`, SmartFetch also grants itself the `cap_dac_read_sear
 
 ## Windows Support (Beta)
 
-Compile using GCC / MinGW:
+Compile using GCC / MinGW from the project root:
 
 ```bash
-gcc main.c ui.c collect_windows.c -o sfetch.exe -ladvapi32
+gcc C_code/main.c C_code/ui.c C_code/collect_windows.c -I./H_code -o sfetch.exe -lcurl -ladvapi32
 sfetch.exe
 ```
 
-> **Note:** on Windows, `RAM Type` and `Flatpak` fields are not applicable and will always show `N/A`.
+> **Note:** Windows builds require a MinGW-compatible libcurl development package. `RAM Type`, `CPU Temp`, `OS Age`, and `Flatpak` are not currently implemented on Windows and will show `N/A`.
