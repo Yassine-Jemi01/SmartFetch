@@ -51,7 +51,7 @@ sudo pacman -S base-devel curl libcap
 Clone the repository and compile using `make`:
 
 ```bash
-git clone https://github.com/Saul-Goodman6/SmartFetch.git
+git clone https://github.com/Yassine-Jemi01/SmartFetch.git
 cd SmartFetch
 make
 sudo make install
