@@ -5,7 +5,7 @@
 #define SF_VERSION "unknown"
 #endif
 
-#define SF_LINE_COUNT 15
+#define SF_LINE_COUNT 14
 #define SF_LINE_WIDTH 512
 #define SF_ASCII_WIDTH 45
 #define SF_REPO_URL "https://github.com/Yassine-Jemi01/SmartFetch.git"
