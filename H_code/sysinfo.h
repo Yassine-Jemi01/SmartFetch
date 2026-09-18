@@ -8,7 +8,7 @@
 #define SF_LINE_COUNT 15
 #define SF_LINE_WIDTH 512
 #define SF_ASCII_WIDTH 45
-#define SF_REPO_URL "https://github.com/Saul-Goodman6/SmartFetch.git"
+#define SF_REPO_URL "https://github.com/Yassine-Jemi01/SmartFetch.git"
 
 typedef struct {
     char os_name[64];
