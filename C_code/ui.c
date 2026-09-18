@@ -30,17 +30,21 @@ static size_t curl_write_cb(void *contents, size_t size, size_t nmemb, void *use
     size_t realsize = size * nmemb;
     struct membuf *mem = (struct membuf *)userp;
     char *ptr = realloc(mem->data, mem->size + realsize + 1);
+
     if (!ptr) return 0;
+
     mem->data = ptr;
     memcpy(mem->data + mem->size, contents, realsize);
     mem->size += realsize;
     mem->data[mem->size] = '\0';
+
     return realsize;
 }
 
 static int parse_owner_repo(const char *repo_url, char *owner, size_t owner_size, char *repo, size_t repo_size) {
     const char *marker = strstr(repo_url, "github.com/");
     if (!marker) return 0;
+
     marker += strlen("github.com/");
 
     const char *slash = strchr(marker, '/');
@@ -48,13 +52,19 @@ static int parse_owner_repo(const char *repo_url, char *owner, size_t owner_size
 
     size_t owner_len = (size_t)(slash - marker);
     if (owner_len == 0 || owner_len >= owner_size) return 0;
+
     memcpy(owner, marker, owner_len);
     owner[owner_len] = '\0';
 
     const char *repo_start = slash + 1;
     const char *git_suffix = strstr(repo_start, ".git");
-    size_t repo_len = git_suffix ? (size_t)(git_suffix - repo_start) : strlen(repo_start);
+
+    size_t repo_len = git_suffix
+        ? (size_t)(git_suffix - repo_start)
+        : strlen(repo_start);
+
     if (repo_len == 0 || repo_len >= repo_size) return 0;
+
     memcpy(repo, repo_start, repo_len);
     repo[repo_len] = '\0';
 
@@ -64,40 +74,58 @@ static int parse_owner_repo(const char *repo_url, char *owner, size_t owner_size
 static int extract_json_sha(const char *json, char *out, size_t out_size) {
     const char *key = "\"sha\"";
     const char *p = strstr(json, key);
+
     if (!p) return 0;
 
     p = strchr(p + strlen(key), ':');
     if (!p) return 0;
+
     p++;
 
     while (*p == ' ' || *p == '"') p++;
 
     size_t i = 0;
+
     while (p[i] && p[i] != '"' && i < out_size - 1) {
         out[i] = p[i];
         i++;
     }
+
     out[i] = '\0';
+
     return i > 0;
 }
 
 static int fetch_latest_sha(char *out, size_t out_size) {
     char owner[128], repo[128];
+
     if (!parse_owner_repo(SF_REPO_URL, owner, sizeof(owner), repo, sizeof(repo))) {
         return 0;
     }
 
     char api_url[256];
-    snprintf(api_url, sizeof(api_url), "https://api.github.com/repos/%s/%s/commits/main", owner, repo);
+
+    snprintf(
+        api_url,
+        sizeof(api_url),
+        "https://api.github.com/repos/%s/%s/commits/main",
+        owner,
+        repo
+    );
 
     CURL *curl = curl_easy_init();
     if (!curl) return 0;
 
-    struct membuf mem = { .data = malloc(1), .size = 0 };
+    struct membuf mem = {
+        .data = malloc(1),
+        .size = 0
+    };
+
     if (!mem.data) {
         curl_easy_cleanup(curl);
         return 0;
     }
+
     mem.data[0] = '\0';
 
     curl_easy_setopt(curl, CURLOPT_URL, api_url);
@@ -109,45 +137,60 @@ static int fetch_latest_sha(char *out, size_t out_size) {
     curl_easy_setopt(curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
 
     CURLcode res = curl_easy_perform(curl);
+
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
     curl_easy_cleanup(curl);
 
     int ok = 0;
+
     if (res == CURLE_OK && http_code == 200) {
         ok = extract_json_sha(mem.data, out, out_size);
     }
 
     free(mem.data);
+
     return ok;
 }
 
 static void get_exe_dir(char *out, size_t size) {
     out[0] = '\0';
+
     if (size == 0) return;
 
 #ifdef _WIN32
     DWORD len = GetModuleFileNameA(NULL, out, (DWORD)size);
+
     if (len == 0 || len >= size) {
         out[0] = '\0';
         return;
     }
+
     char *slash = strrchr(out, '\\');
-    if (!slash) slash = strrchr(out, '/');
+
+    if (!slash) {
+        slash = strrchr(out, '/');
+    }
+
     if (slash) {
         *(slash + 1) = '\0';
     } else {
         out[0] = '\0';
     }
+
 #else
     ssize_t len = readlink("/proc/self/exe", out, size - 1);
+
     if (len <= 0 || (size_t)len >= size) {
         out[0] = '\0';
         return;
     }
 
     out[len] = '\0';
+
     char *slash = strrchr(out, '/');
+
     if (slash) {
         *(slash + 1) = '\0';
     } else {
@@ -158,31 +201,60 @@ static void get_exe_dir(char *out, size_t size) {
 
 static int visible_len(const char *s) {
     int len = 0;
+
     while (*s) {
         if (*s == '\033' && *(s + 1) == '[') {
             s += 2;
-            while (*s && *s != 'm') s++;
-            if (*s == 'm') s++;
+
+            while (*s && *s != 'm') {
+                s++;
+            }
+
+            if (*s == 'm') {
+                s++;
+            }
         } else {
             len++;
             s++;
         }
     }
+
     return len;
 }
 
 static FILE *open_ascii_file(const char *exe_dir, const char *ascii_name) {
     char path[PATH_MAX];
 
-    snprintf(path, sizeof(path), "/usr/share/smartfetch/Ascii_art/%s", ascii_name);
+    snprintf(
+        path,
+        sizeof(path),
+        "/usr/share/smartfetch/Ascii_art/%s",
+        ascii_name
+    );
+
     FILE *fp = fopen(path, "r");
+
     if (fp) return fp;
 
-    snprintf(path, sizeof(path), "%sAscii_art/%s", exe_dir, ascii_name);
+    snprintf(
+        path,
+        sizeof(path),
+        "%sAscii_art/%s",
+        exe_dir,
+        ascii_name
+    );
+
     fp = fopen(path, "r");
+
     if (fp) return fp;
 
-    snprintf(path, sizeof(path), "Ascii_art/%s", ascii_name);
+    snprintf(
+        path,
+        sizeof(path),
+        "Ascii_art/%s",
+        ascii_name
+    );
+
     return fopen(path, "r");
 }
 
@@ -216,13 +288,20 @@ static const char *pick_ascii_name(const char *os_name) {
             return os_matches[i].file;
         }
     }
+
     return "default_ascii.txt";
 }
 
-static void resolve_identity(const char **username_out, char *hostname, size_t hostname_size) {
+static void resolve_identity(
+    const char **username_out,
+    char *hostname,
+    size_t hostname_size
+) {
 #ifdef _WIN32
     static char win_user[256];
+
     DWORD len = sizeof(win_user);
+
     if (GetUserNameA(win_user, &len)) {
         *username_out = win_user;
     } else {
@@ -231,12 +310,21 @@ static void resolve_identity(const char **username_out, char *hostname, size_t h
     }
 
     DWORD host_len = (DWORD)hostname_size;
+
     if (!GetComputerNameA(hostname, &host_len)) {
         const char *env_host = getenv("COMPUTERNAME");
-        snprintf(hostname, hostname_size, "%s", env_host ? env_host : "smartfetch");
+
+        snprintf(
+            hostname,
+            hostname_size,
+            "%s",
+            env_host ? env_host : "smartfetch"
+        );
     }
+
 #else
     struct passwd *pw = getpwuid(getuid());
+
     if (pw && pw->pw_name) {
         *username_out = pw->pw_name;
     } else {
@@ -244,50 +332,158 @@ static void resolve_identity(const char **username_out, char *hostname, size_t h
         *username_out = env_user ? env_user : "user";
     }
 
-    if (gethostname(hostname, hostname_size) != 0 || strlen(hostname) == 0) {
+    if (gethostname(hostname, hostname_size) != 0) {
         snprintf(hostname, hostname_size, "smartfetch");
+    } else {
+        hostname[hostname_size - 1] = '\0';
+
+        if (hostname[0] == '\0') {
+            snprintf(hostname, hostname_size, "smartfetch");
+        }
     }
 #endif
 }
 
-static void build_info_lines(char info_lines[SF_LINE_COUNT][SF_LINE_WIDTH],
-                              const SystemData *data,
-                              const char *username,
-                              const char *hostname) {
-    memset(info_lines, 0, SF_LINE_COUNT * SF_LINE_WIDTH);
+static void build_info_lines(
+    char info_lines[SF_LINE_COUNT][SF_LINE_WIDTH],
+    const SystemData *data,
+    const char *username,
+    const char *hostname
+) {
+    memset(
+        info_lines,
+        0,
+        SF_LINE_COUNT * SF_LINE_WIDTH
+    );
 
-    snprintf(info_lines[0], SF_LINE_WIDTH, "\033[1;36m%s\033[0m@\033[1;36m%s\033[0m", username, hostname);
+    snprintf(
+        info_lines[0],
+        SF_LINE_WIDTH,
+        "\033[1;36m%s\033[0m@\033[1;36m%s\033[0m",
+        username,
+        hostname
+    );
 
     int user_host_len = strlen(username) + strlen(hostname) + 1;
+
     char separator[128] = "";
+
     for (int i = 0; i < user_host_len && i < 127; i++) {
         separator[i] = '-';
     }
+
     separator[user_host_len < 127 ? user_host_len : 127] = '\0';
 
-    snprintf(info_lines[1], SF_LINE_WIDTH, "%s", separator);
-    snprintf(info_lines[2], SF_LINE_WIDTH, "\033[1;32mOS       :\033[0m %s", data->os_name);
-    snprintf(info_lines[3], SF_LINE_WIDTH, "\033[1;32mKernel   :\033[0m %s", data->kernel);
-    snprintf(info_lines[4], SF_LINE_WIDTH, "\033[1;32mUptime   :\033[0m %s", data->os_uptime);
-    snprintf(info_lines[5], SF_LINE_WIDTH, "\033[1;32mOS Age   :\033[0m %s", data->os_age);
-    snprintf(info_lines[6], SF_LINE_WIDTH, "\033[1;32mCPU      :\033[0m %s", data->cpu_name);
-    snprintf(info_lines[7], SF_LINE_WIDTH, "\033[1;32mCPU Temp :\033[0m %s", data->cpu_temp);
-    snprintf(info_lines[8], SF_LINE_WIDTH, "\033[1;32mRAM      :\033[0m %s (%s)", data->ram_total, data->ram_type);
-    snprintf(info_lines[9], SF_LINE_WIDTH, "\033[1;32mStorage  :\033[0m %s", data->storage_info);
-    snprintf(info_lines[10], SF_LINE_WIDTH, "\033[1;32mDisplay  :\033[0m %s", data->screen_info);
-    snprintf(info_lines[11], SF_LINE_WIDTH, "\033[1;32mGPU      :\033[0m %s", data->gpu_type);
-    snprintf(info_lines[12], SF_LINE_WIDTH, "\033[1;32mShell    :\033[0m %s", data->shell_info);
-    snprintf(info_lines[13], SF_LINE_WIDTH, "\033[1;32mFlatpak  :\033[0m %s", data->flatpak_count);
+    snprintf(
+        info_lines[1],
+        SF_LINE_WIDTH,
+        "%s",
+        separator
+    );
+
+    snprintf(
+        info_lines[2],
+        SF_LINE_WIDTH,
+        "\033[1;32mOS       :\033[0m %s",
+        data->os_name
+    );
+
+    snprintf(
+        info_lines[3],
+        SF_LINE_WIDTH,
+        "\033[1;32mKernel   :\033[0m %s",
+        data->kernel
+    );
+
+    snprintf(
+        info_lines[4],
+        SF_LINE_WIDTH,
+        "\033[1;32mUptime   :\033[0m %s",
+        data->os_uptime
+    );
+
+    snprintf(
+        info_lines[5],
+        SF_LINE_WIDTH,
+        "\033[1;32mOS Age   :\033[0m %s",
+        data->os_age
+    );
+
+    snprintf(
+        info_lines[6],
+        SF_LINE_WIDTH,
+        "\033[1;32mCPU      :\033[0m %s",
+        data->cpu_name
+    );
+
+    snprintf(
+        info_lines[7],
+        SF_LINE_WIDTH,
+        "\033[1;32mCPU Temp :\033[0m %s",
+        data->cpu_temp
+    );
+
+    snprintf(
+        info_lines[8],
+        SF_LINE_WIDTH,
+        "\033[1;32mRAM      :\033[0m %s (%s)",
+        data->ram_total,
+        data->ram_type
+    );
+
+    snprintf(
+        info_lines[9],
+        SF_LINE_WIDTH,
+        "\033[1;32mStorage  :\033[0m %s",
+        data->storage_info
+    );
+
+    snprintf(
+        info_lines[10],
+        SF_LINE_WIDTH,
+        "\033[1;32mDisplay  :\033[0m %s",
+        data->screen_info
+    );
+
+    snprintf(
+        info_lines[11],
+        SF_LINE_WIDTH,
+        "\033[1;32mGPU      :\033[0m %s",
+        data->gpu_type
+    );
+
+    snprintf(
+        info_lines[12],
+        SF_LINE_WIDTH,
+        "\033[1;32mShell    :\033[0m %s",
+        data->shell_info
+    );
+
+    snprintf(
+        info_lines[13],
+        SF_LINE_WIDTH,
+        "\033[1;32mFlatpak  :\033[0m %s",
+        data->flatpak_count
+    );
 }
 
-static void print_body(FILE *ascii_fp, char info_lines[SF_LINE_COUNT][SF_LINE_WIDTH]) {
+static void print_body(
+    FILE *ascii_fp,
+    char info_lines[SF_LINE_COUNT][SF_LINE_WIDTH]
+) {
     char ascii_line[128];
     int line_index = 0;
 
     while (1) {
         char *got_ascii = NULL;
+
         if (ascii_fp) {
-            got_ascii = fgets(ascii_line, sizeof(ascii_line), ascii_fp);
+            got_ascii = fgets(
+                ascii_line,
+                sizeof(ascii_line),
+                ascii_fp
+            );
+
             if (got_ascii) {
                 ascii_line[strcspn(ascii_line, "\n")] = 0;
             }
@@ -301,11 +497,18 @@ static void print_body(FILE *ascii_fp, char info_lines[SF_LINE_COUNT][SF_LINE_WI
 
         if (got_ascii) {
             int pad = SF_ASCII_WIDTH - visible_len(ascii_line);
+
             printf("%s", ascii_line);
-            for (int i = 0; i < pad; i++) putchar(' ');
+
+            for (int i = 0; i < pad; i++) {
+                putchar(' ');
+            }
+
             putchar(' ');
         } else {
-            for (int i = 0; i < SF_ASCII_WIDTH + 1; i++) putchar(' ');
+            for (int i = 0; i < SF_ASCII_WIDTH + 1; i++) {
+                putchar(' ');
+            }
         }
 
         if (has_info) {
@@ -319,32 +522,65 @@ static void print_body(FILE *ascii_fp, char info_lines[SF_LINE_COUNT][SF_LINE_WI
 
 void render_ui(const SystemData *data) {
     char exe_dir[PATH_MAX];
-    get_exe_dir(exe_dir, sizeof(exe_dir));
+
+    get_exe_dir(
+        exe_dir,
+        sizeof(exe_dir)
+    );
 
     const char *ascii_name = pick_ascii_name(data->os_name);
-    FILE *ascii_fp = open_ascii_file(exe_dir, ascii_name);
+
+    FILE *ascii_fp = open_ascii_file(
+        exe_dir,
+        ascii_name
+    );
 
     printf("\n");
 
     char hostname[HOST_NAME_MAX];
     const char *username = NULL;
-    resolve_identity(&username, hostname, sizeof(hostname));
+
+    resolve_identity(
+        &username,
+        hostname,
+        sizeof(hostname)
+    );
 
     char info_lines[SF_LINE_COUNT][SF_LINE_WIDTH];
-    build_info_lines(info_lines, data, username, hostname);
 
-    print_body(ascii_fp, info_lines);
+    build_info_lines(
+        info_lines,
+        data,
+        username,
+        hostname
+    );
 
-    if (ascii_fp) fclose(ascii_fp);
+    print_body(
+        ascii_fp,
+        info_lines
+    );
+
+    if (ascii_fp) {
+        fclose(ascii_fp);
+    }
+
     printf("\n");
 
     print_color_palette();
+
     printf("\n");
 }
 
 void print_help(void) {
-    printf("SmartFetch (sfetch) - v%s\n", SF_VERSION);
-    printf("A fast tool to display system information with distro ASCII logo.\n\n");
+    printf(
+        "SmartFetch (sfetch) - v%s\n",
+        SF_VERSION
+    );
+
+    printf(
+        "A fast tool to display system information with distro ASCII logo.\n\n"
+    );
+
     printf("Usage:\n");
     printf("  sfetch                  Display system information\n");
     printf("  sfetch -h, --help       Display this help message\n");
@@ -361,19 +597,44 @@ void check_for_update(void) {
     }
 
     if (strcmp(SF_VERSION, "unknown") == 0) {
-        printf("Cannot determine current version (installed without git info).\n");
-        printf("Latest version on GitHub: %.7s\n", remote_hash);
-        printf("To update run: git pull origin main && make && sudo make install\n");
+        printf(
+            "Cannot determine current version (installed without git info).\n"
+        );
+
+        printf(
+            "Latest version on GitHub: %.7s\n",
+            remote_hash
+        );
+
+        printf(
+            "To update run: git pull origin main && make && sudo make install\n"
+        );
+
         return;
     }
 
     if (strncmp(remote_hash, SF_VERSION, strlen(SF_VERSION)) == 0) {
-        printf("You are on the latest version (%s).\n", SF_VERSION);
+        printf(
+            "You are on the latest version (%s).\n",
+            SF_VERSION
+        );
     } else {
         printf("A new update is available!\n");
-        printf("Current version : %s\n", SF_VERSION);
-        printf("Latest version  : %.7s\n", remote_hash);
-        printf("\nTo update, go to the project folder and run:\n");
+
+        printf(
+            "Current version : %s\n",
+            SF_VERSION
+        );
+
+        printf(
+            "Latest version  : %.7s\n",
+            remote_hash
+        );
+
+        printf(
+            "\nTo update, go to the project folder and run:\n"
+        );
+
         printf("  git pull origin main\n");
         printf("  make && sudo make install\n");
     }
