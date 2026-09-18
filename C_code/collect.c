@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <ctype.h>
 #include <stdint.h>
 #include <dirent.h>
 #include <limits.h>
@@ -20,25 +19,39 @@
 #define PATH_MAX 4096
 #endif
 
+static void set_default(char *out, size_t size) {
+    if (!out || size == 0) return;
+
+    strncpy(out, "N/A", size - 1);
+    out[size - 1] = '\0';
+}
+
 static void get_os_name(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+    set_default(out, size);
+    if (!out || size == 0) return;
+
     FILE *fp = fopen("/etc/os-release", "r");
     if (!fp) return;
 
     char line[256];
+
     while (fgets(line, sizeof(line), fp)) {
         if (strncmp(line, "PRETTY_NAME=", 12) == 0) {
             char *value = line + 12;
-            value[strcspn(value, "\n")] = 0;
+
+            value[strcspn(value, "\n")] = '\0';
+
             size_t len = strlen(value);
 
-            if (len >= 2 && value[0] == '"' && value[len - 1] == '"') {
+            if (len >= 2 &&
+                value[0] == '"' &&
+                value[len - 1] == '"') {
+
                 value[len - 1] = '\0';
                 value++;
             }
 
-            strncpy(out, value, size - 1);
-            out[size - 1] = '\0';
+            snprintf(out, size, "%s", value);
             break;
         }
     }
@@ -47,18 +60,19 @@ static void get_os_name(char *out, size_t size) {
 }
 
 static void get_kernel(char *out, size_t size) {
+    set_default(out, size);
+    if (!out || size == 0) return;
+
     struct utsname u;
 
     if (uname(&u) == 0) {
-        strncpy(out, u.release, size - 1);
-        out[size - 1] = '\0';
-    } else {
-        strncpy(out, "N/A", size);
+        snprintf(out, size, "%s", u.release);
     }
 }
 
 static void get_cpu_name(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+    set_default(out, size);
+    if (!out || size == 0) return;
 
     FILE *fp = fopen("/proc/cpuinfo", "r");
     if (!fp) return;
@@ -76,10 +90,9 @@ static void get_cpu_name(char *out, size_t size) {
                     colon++;
                 }
 
-                colon[strcspn(colon, "\n")] = 0;
+                colon[strcspn(colon, "\n")] = '\0';
 
-                strncpy(out, colon, size - 1);
-                out[size - 1] = '\0';
+                snprintf(out, size, "%s", colon);
             }
 
             break;
@@ -90,7 +103,8 @@ static void get_cpu_name(char *out, size_t size) {
 }
 
 static void get_cpu_temp(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+    set_default(out, size);
+    if (!out || size == 0) return;
 
     DIR *d = opendir("/sys/class/thermal");
     if (!d) return;
@@ -118,7 +132,7 @@ static void get_cpu_temp(char *out, size_t size) {
 
         if (tf) {
             if (fgets(type, sizeof(type), tf)) {
-                type[strcspn(type, "\n")] = 0;
+                type[strcspn(type, "\n")] = '\0';
             }
 
             fclose(tf);
@@ -150,55 +164,84 @@ static void get_cpu_temp(char *out, size_t size) {
     long milli = 0;
 
     if (fscanf(tf, "%ld", &milli) == 1) {
-        snprintf(out, size, "%.1f°C", milli / 1000.0);
+        snprintf(
+            out,
+            size,
+            "%.1f°C",
+            (double)milli / 1000.0
+        );
     }
 
     fclose(tf);
 }
 
-static double kb_to_gib(long kb) {
-    return kb / (1024.0 * 1024.0);
+static double kb_to_gib(long long kb) {
+    return (double)kb / (1024.0 * 1024.0);
 }
 
 static const char *usage_color(double percent) {
-    if (percent < 50.0) return "\033[1;32m";
-    if (percent < 80.0) return "\033[1;33m";
+    if (percent < 50.0) {
+        return "\033[1;32m";
+    }
+
+    if (percent < 80.0) {
+        return "\033[1;33m";
+    }
+
     return "\033[1;31m";
 }
 
 static void get_ram_info(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+    set_default(out, size);
+    if (!out || size == 0) return;
 
     FILE *fp = fopen("/proc/meminfo", "r");
     if (!fp) return;
 
-    long mem_total = -1;
-    long mem_available = -1;
+    long long mem_total = -1;
+    long long mem_available = -1;
 
     char line[256];
 
     while (fgets(line, sizeof(line), fp)) {
-        if (mem_total < 0 && strncmp(line, "MemTotal:", 9) == 0) {
-            sscanf(line + 9, "%ld", &mem_total);
-        } else if (mem_available < 0 &&
-                   strncmp(line, "MemAvailable:", 13) == 0) {
-            sscanf(line + 13, "%ld", &mem_available);
+        if (mem_total < 0 &&
+            strncmp(line, "MemTotal:", 9) == 0) {
+
+            sscanf(line + 9, "%lld", &mem_total);
+
+        } else if (
+            mem_available < 0 &&
+            strncmp(line, "MemAvailable:", 13) == 0
+        ) {
+            sscanf(
+                line + 13,
+                "%lld",
+                &mem_available
+            );
         }
 
-        if (mem_total >= 0 && mem_available >= 0) {
+        if (mem_total >= 0 &&
+            mem_available >= 0) {
             break;
         }
     }
 
     fclose(fp);
 
-    if (mem_total < 0) return;
+    if (mem_total <= 0) {
+        return;
+    }
 
-    if (mem_available >= 0) {
-        long used_kb = mem_total - mem_available;
+    if (mem_available >= 0 &&
+        mem_available <= mem_total) {
+
+        long long used_kb =
+            mem_total - mem_available;
 
         double percent =
-            (double)used_kb / (double)mem_total * 100.0;
+            (double)used_kb /
+            (double)mem_total *
+            100.0;
 
         snprintf(
             out,
@@ -209,6 +252,7 @@ static void get_ram_info(char *out, size_t size) {
             usage_color(percent),
             percent
         );
+
     } else {
         snprintf(
             out,
@@ -265,10 +309,11 @@ static const char *mem_type_name(uint8_t t) {
         return low_types[t];
     }
 
-    for (size_t i = 0;
-         i < sizeof(high_types) / sizeof(high_types[0]);
-         i++) {
-
+    for (
+        size_t i = 0;
+        i < sizeof(high_types) / sizeof(high_types[0]);
+        i++
+    ) {
         if (high_types[i].code == t) {
             return high_types[i].name;
         }
@@ -277,9 +322,14 @@ static const char *mem_type_name(uint8_t t) {
     return NULL;
 }
 
-static int ram_type_via_dmidecode(char *out, size_t size) {
+static int ram_type_via_dmidecode(
+    char *out,
+    size_t size
+) {
+    if (!out || size == 0) return 0;
+
     FILE *fp = popen(
-        "sudo -n dmidecode -t 17 2>/dev/null",
+        "dmidecode -t 17 2>/dev/null",
         "r"
     );
 
@@ -298,11 +348,18 @@ static int ram_type_via_dmidecode(char *out, size_t size) {
                 p++;
             }
 
-            p[strcspn(p, "\n")] = 0;
+            p[strcspn(p, "\n")] = '\0';
 
-            if (*p && strcmp(p, "Unknown") != 0) {
-                strncpy(out, p, size - 1);
-                out[size - 1] = '\0';
+            if (*p &&
+                strcmp(p, "Unknown") != 0) {
+
+                snprintf(
+                    out,
+                    size,
+                    "%s",
+                    p
+                );
+
                 found = 1;
                 break;
             }
@@ -315,79 +372,160 @@ static int ram_type_via_dmidecode(char *out, size_t size) {
 }
 
 static void get_ram_type(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+    set_default(out, size);
+    if (!out || size == 0) return;
 
-    if (ram_type_via_dmidecode(out, size)) {
-        return;
-    }
-
+    /*
+     * Try reading the DMI table directly first.
+     * This avoids launching dmidecode on every run
+     * when the installed capability already allows access.
+     */
     FILE *fp = fopen(
         "/sys/firmware/dmi/tables/DMI",
         "rb"
     );
 
-    if (!fp) return;
+    if (fp) {
+        unsigned char *buf = NULL;
+        size_t capacity = 0;
+        size_t n = 0;
 
-    unsigned char buf[65536];
-
-    size_t n = fread(
-        buf,
-        1,
-        sizeof(buf),
-        fp
-    );
-
-    fclose(fp);
-
-    if (n < 4) return;
-
-    size_t offset = 0;
-    const char *found = NULL;
-
-    while (offset + 4 <= n) {
-        uint8_t type = buf[offset];
-        uint8_t length = buf[offset + 1];
-
-        if (length < 4 || offset + length > n) {
-            break;
-        }
-
-        if (type == 17 && length > 0x12) {
-            const char *name =
-                mem_type_name(buf[offset + 0x12]);
-
-            if (name && strcmp(name, "Unknown") != 0) {
-                found = name;
-                break;
-            }
-        }
-
-        if (type == 127) {
-            break;
-        }
-
-        size_t str_off = offset + length;
+        unsigned char chunk[8192];
+        size_t got;
 
         while (
-            str_off + 1 < n &&
-            !(buf[str_off] == 0 && buf[str_off + 1] == 0)
+            (got = fread(
+                chunk,
+                1,
+                sizeof(chunk),
+                fp
+            )) > 0
         ) {
-            str_off++;
+            if (n + got > capacity) {
+                size_t new_capacity =
+                    capacity ? capacity * 2 : 8192;
+
+                while (new_capacity < n + got) {
+                    new_capacity *= 2;
+                }
+
+                unsigned char *tmp =
+                    realloc(buf, new_capacity);
+
+                if (!tmp) {
+                    free(buf);
+                    fclose(fp);
+                    return;
+                }
+
+                buf = tmp;
+                capacity = new_capacity;
+            }
+
+            memcpy(
+                buf + n,
+                chunk,
+                got
+            );
+
+            n += got;
         }
 
-        offset = str_off + 2;
+        fclose(fp);
+
+        const char *found = NULL;
+        size_t offset = 0;
+
+        while (offset + 4 <= n) {
+            uint8_t type = buf[offset];
+            uint8_t length = buf[offset + 1];
+
+            if (length < 4 ||
+                offset + length > n) {
+                break;
+            }
+
+            /*
+             * SMBIOS Type 17:
+             * Memory Device
+             * Type field is at offset 0x12.
+             */
+            if (type == 17 &&
+                length > 0x12) {
+
+                const char *name =
+                    mem_type_name(
+                        buf[offset + 0x12]
+                    );
+
+                if (name &&
+                    strcmp(name, "Unknown") != 0) {
+
+                    found = name;
+                    break;
+                }
+            }
+
+            if (type == 127) {
+                break;
+            }
+
+            size_t str_off =
+                offset + length;
+
+            int terminated = 0;
+
+            while (str_off + 1 < n) {
+                if (
+                    buf[str_off] == 0 &&
+                    buf[str_off + 1] == 0
+                ) {
+                    terminated = 1;
+                    break;
+                }
+
+                str_off++;
+            }
+
+            if (!terminated) {
+                break;
+            }
+
+            offset = str_off + 2;
+        }
+
+        if (found) {
+            snprintf(
+                out,
+                size,
+                "%s",
+                found
+            );
+
+            free(buf);
+            return;
+        }
+
+        free(buf);
     }
 
-    if (found) {
-        strncpy(out, found, size - 1);
-        out[size - 1] = '\0';
-    }
+    /*
+     * Fallback for systems where direct DMI access
+     * is unavailable.
+     */
+    (void)ram_type_via_dmidecode(out, size);
 }
 
-static void get_storage_info(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+static void get_storage_info(
+    char *out,
+    size_t size
+) {
+    set_default(out, size);
+    if (!out || size == 0) return;
 
-    FILE *mtab = setmntent("/proc/mounts", "r");
+    FILE *mtab =
+        setmntent("/proc/mounts", "r");
+
     if (!mtab) return;
 
     struct mntent entry;
@@ -396,6 +534,7 @@ static void get_storage_info(char *out, size_t size) {
 
     char device[256] = "";
     char fstype[64] = "";
+
     int found = 0;
 
     while (
@@ -407,19 +546,22 @@ static void get_storage_info(char *out, size_t size) {
         )) != NULL
     ) {
         if (strcmp(m->mnt_dir, "/") == 0) {
-            strncpy(
+            snprintf(
                 device,
-                m->mnt_fsname,
-                sizeof(device) - 1
+                sizeof(device),
+                "%s",
+                m->mnt_fsname
             );
 
-            strncpy(
+            snprintf(
                 fstype,
-                m->mnt_type,
-                sizeof(fstype) - 1
+                sizeof(fstype),
+                "%s",
+                m->mnt_type
             );
 
             found = 1;
+            break;
         }
     }
 
@@ -443,15 +585,24 @@ static void get_storage_info(char *out, size_t size) {
 
     double total_gb =
         (double)vfs.f_blocks *
-        vfs.f_frsize /
+        (double)vfs.f_frsize /
         (1024.0 * 1024.0 * 1024.0);
 
-    double free_gb =
-        (double)vfs.f_bfree *
-        vfs.f_frsize /
+    /*
+     * f_bavail is the amount of free space available
+     * to an unprivileged user.
+     */
+    double available_gb =
+        (double)vfs.f_bavail *
+        (double)vfs.f_frsize /
         (1024.0 * 1024.0 * 1024.0);
 
-    double used_gb = total_gb - free_gb;
+    double used_gb =
+        total_gb - available_gb;
+
+    if (used_gb < 0.0) {
+        used_gb = 0.0;
+    }
 
     snprintf(
         out,
@@ -464,8 +615,12 @@ static void get_storage_info(char *out, size_t size) {
     );
 }
 
-static void get_screen_info(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+static void get_screen_info(
+    char *out,
+    size_t size
+) {
+    set_default(out, size);
+    if (!out || size == 0) return;
 
     DIR *d = opendir("/sys/class/drm");
     if (!d) return;
@@ -476,10 +631,14 @@ static void get_screen_info(char *out, size_t size) {
     struct dirent *entry;
 
     while ((entry = readdir(d)) != NULL) {
-        if (entry->d_name[0] == '.') continue;
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
 
-        if (strstr(entry->d_name, "Writeback") ||
-            strstr(entry->d_name, "Virtual")) {
+        if (
+            strstr(entry->d_name, "Writeback") ||
+            strstr(entry->d_name, "Virtual")
+        ) {
             continue;
         }
 
@@ -498,7 +657,7 @@ static void get_screen_info(char *out, size_t size) {
         if (!sf) continue;
 
         if (fgets(status, sizeof(status), sf)) {
-            status[strcspn(status, "\n")] = 0;
+            status[strcspn(status, "\n")] = '\0';
         }
 
         fclose(sf);
@@ -521,32 +680,40 @@ static void get_screen_info(char *out, size_t size) {
 
         char mode[64];
 
+        /*
+         * Check all available modes instead of
+         * stopping after the first one.
+         */
         while (fgets(mode, sizeof(mode), mf)) {
-            mode[strcspn(mode, "\n")] = 0;
+            mode[strcspn(mode, "\n")] = '\0';
 
             int w = 0;
             int h = 0;
 
-            if (sscanf(mode, "%dx%d", &w, &h) == 2 &&
+            if (
+                sscanf(
+                    mode,
+                    "%dx%d",
+                    &w,
+                    &h
+                ) == 2 &&
                 w > 0 &&
-                h > 0) {
-
-                long area = (long)w * (long)h;
+                h > 0
+            ) {
+                long area =
+                    (long)w * (long)h;
 
                 if (area > best_area) {
                     best_area = area;
 
-                    strncpy(
+                    snprintf(
                         best_mode,
-                        mode,
-                        sizeof(best_mode) - 1
+                        sizeof(best_mode),
+                        "%s",
+                        mode
                     );
-
-                    best_mode[sizeof(best_mode) - 1] = '\0';
                 }
             }
-
-            break;
         }
 
         fclose(mf);
@@ -555,8 +722,12 @@ static void get_screen_info(char *out, size_t size) {
     closedir(d);
 
     if (best_area > 0) {
-        strncpy(out, best_mode, size - 1);
-        out[size - 1] = '\0';
+        snprintf(
+            out,
+            size,
+            "%s",
+            best_mode
+        );
     }
 }
 
@@ -565,15 +736,29 @@ static int parse_vendor_line(
     char *vname,
     size_t vname_size
 ) {
+    if (!line ||
+        !vname ||
+        vname_size == 0) {
+        return 0;
+    }
+
     const char *name = line + 4;
 
-    while (*name == ' ' || *name == '\t') {
+    while (
+        *name == ' ' ||
+        *name == '\t'
+    ) {
         name++;
     }
 
-    strncpy(vname, name, vname_size - 1);
-    vname[vname_size - 1] = '\0';
-    vname[strcspn(vname, "\n")] = 0;
+    snprintf(
+        vname,
+        vname_size,
+        "%s",
+        name
+    );
+
+    vname[strcspn(vname, "\n")] = '\0';
 
     return 1;
 }
@@ -584,22 +769,42 @@ static int parse_device_line(
     char *dname,
     size_t dname_size
 ) {
-    unsigned dv;
-
-    if (sscanf(line + 1, "%4x", &dv) != 1 ||
-        dv != device) {
+    if (!line ||
+        !dname ||
+        dname_size == 0) {
         return 0;
     }
 
-    const char *name = line + 1 + 4;
+    unsigned dv;
 
-    while (*name == ' ' || *name == '\t') {
+    if (
+        sscanf(
+            line + 1,
+            "%4x",
+            &dv
+        ) != 1 ||
+        dv != device
+    ) {
+        return 0;
+    }
+
+    const char *name = line + 5;
+
+    while (
+        *name == ' ' ||
+        *name == '\t'
+    ) {
         name++;
     }
 
-    strncpy(dname, name, dname_size - 1);
-    dname[dname_size - 1] = '\0';
-    dname[strcspn(dname, "\n")] = 0;
+    snprintf(
+        dname,
+        dname_size,
+        "%s",
+        name
+    );
+
+    dname[strcspn(dname, "\n")] = '\0';
 
     return 1;
 }
@@ -623,11 +828,17 @@ static int pci_ids_lookup(
     int found_device = 0;
 
     while (fgets(line, sizeof(line), fp)) {
-        if (line[0] == '#' || line[0] == '\n') {
+        if (
+            line[0] == '#' ||
+            line[0] == '\n'
+        ) {
             continue;
         }
 
-        if (line[0] == '\t' && line[1] == '\t') {
+        if (
+            line[0] == '\t' &&
+            line[1] == '\t'
+        ) {
             continue;
         }
 
@@ -650,18 +861,26 @@ static int pci_ids_lookup(
 
         unsigned v;
 
-        if (sscanf(line, "%4x", &v) != 1) {
+        if (
+            sscanf(
+                line,
+                "%4x",
+                &v
+            ) != 1
+        ) {
             continue;
         }
 
         if (v == vendor) {
             in_vendor = 1;
 
-            found_vendor = parse_vendor_line(
-                line,
-                vname,
-                vname_size
-            );
+            found_vendor =
+                parse_vendor_line(
+                    line,
+                    vname,
+                    vname_size
+                );
+
         } else if (in_vendor) {
             break;
         }
@@ -669,19 +888,28 @@ static int pci_ids_lookup(
 
     fclose(fp);
 
-    return found_vendor && found_device;
+    return found_vendor &&
+           found_device;
 }
 
-static void get_gpu_info(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+static void get_gpu_info(
+    char *out,
+    size_t size
+) {
+    set_default(out, size);
+    if (!out || size == 0) return;
 
-    DIR *d = opendir("/sys/bus/pci/devices");
+    DIR *d =
+        opendir("/sys/bus/pci/devices");
+
     if (!d) return;
 
     struct dirent *entry;
 
     while ((entry = readdir(d)) != NULL) {
-        if (entry->d_name[0] == '.') continue;
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
 
         char class_path[PATH_MAX];
 
@@ -697,15 +925,17 @@ static void get_gpu_info(char *out, size_t size) {
         FILE *cf = fopen(class_path, "r");
         if (!cf) continue;
 
-        int ok = (
-            fscanf(cf, "0x%x", &class_code) == 1
-        );
+        int ok =
+            fscanf(
+                cf,
+                "0x%x",
+                &class_code
+            ) == 1;
 
         fclose(cf);
 
-        if (!ok) continue;
-
-        if (((class_code >> 16) & 0xFF) != 0x03) {
+        if (!ok ||
+            ((class_code >> 16) & 0xFF) != 0x03) {
             continue;
         }
 
@@ -731,22 +961,34 @@ static void get_gpu_info(char *out, size_t size) {
 
         FILE *vf = fopen(vendor_path, "r");
 
-        if (vf) {
-            if (fscanf(vf, "0x%x", &vendor) != 1) {
-                vendor = 0;
-            }
+        int vendor_ok =
+            vf &&
+            fscanf(
+                vf,
+                "0x%x",
+                &vendor
+            ) == 1;
 
+        if (vf) {
             fclose(vf);
         }
 
         FILE *df = fopen(device_path, "r");
 
-        if (df) {
-            if (fscanf(df, "0x%x", &device) != 1) {
-                device = 0;
-            }
+        int device_ok =
+            df &&
+            fscanf(
+                df,
+                "0x%x",
+                &device
+            ) == 1;
 
+        if (df) {
             fclose(df);
+        }
+
+        if (!vendor_ok || !device_ok) {
+            continue;
         }
 
         char vname[128] = "";
@@ -766,15 +1008,16 @@ static void get_gpu_info(char *out, size_t size) {
             !resolved;
             i++
         ) {
-            resolved = pci_ids_lookup(
-                ids_paths[i],
-                vendor,
-                device,
-                vname,
-                sizeof(vname),
-                dname,
-                sizeof(dname)
-            );
+            resolved =
+                pci_ids_lookup(
+                    ids_paths[i],
+                    vendor,
+                    device,
+                    vname,
+                    sizeof(vname),
+                    dname,
+                    sizeof(dname)
+                );
         }
 
         if (resolved) {
@@ -801,23 +1044,38 @@ static void get_gpu_info(char *out, size_t size) {
     closedir(d);
 }
 
-static void get_shell_info(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+static void get_shell_info(
+    char *out,
+    size_t size
+) {
+    set_default(out, size);
+    if (!out || size == 0) return;
 
-    const char *shell = getenv("SHELL");
+    const char *shell =
+        getenv("SHELL");
 
-    if (!shell || shell[0] == '\0') {
+    if (!shell ||
+        shell[0] == '\0') {
         return;
     }
 
-    const char *slash = strrchr(shell, '/');
-    const char *name = slash ? slash + 1 : shell;
+    const char *slash =
+        strrchr(shell, '/');
 
-    strncpy(out, name, size - 1);
-    out[size - 1] = '\0';
+    const char *name =
+        slash ? slash + 1 : shell;
+
+    snprintf(
+        out,
+        size,
+        "%s",
+        name
+    );
 }
 
-static int count_dir_entries(const char *path) {
+static int count_dir_entries(
+    const char *path
+) {
     DIR *d = opendir(path);
     if (!d) return -1;
 
@@ -849,22 +1107,34 @@ static int flatpak_count_via_cli(void) {
     char line[256];
 
     while (fgets(line, sizeof(line), fp)) {
-        if (line[strspn(line, " \t\r\n")] != '\0') {
+        if (
+            line[
+                strspn(
+                    line,
+                    " \t\r\n"
+                )
+            ] != '\0'
+        ) {
             count++;
         }
     }
 
     int status = pclose(fp);
 
-    if (status != 0) {
-        return -1;
-    }
-
-    return count;
+    return status == 0
+        ? count
+        : -1;
 }
 
-static void get_flatpak_count(char *out, size_t size) {
-    int cli_count = flatpak_count_via_cli();
+static void get_flatpak_count(
+    char *out,
+    size_t size
+) {
+    set_default(out, size);
+    if (!out || size == 0) return;
+
+    int cli_count =
+        flatpak_count_via_cli();
 
     if (cli_count >= 0) {
         snprintf(
@@ -881,14 +1151,17 @@ static void get_flatpak_count(char *out, size_t size) {
     int checked_any = 0;
 
     int sys_count =
-        count_dir_entries("/var/lib/flatpak/app");
+        count_dir_entries(
+            "/var/lib/flatpak/app"
+        );
 
     if (sys_count >= 0) {
         total += sys_count;
         checked_any = 1;
     }
 
-    const char *home = getenv("HOME");
+    const char *home =
+        getenv("HOME");
 
     if (home) {
         char user_path[PATH_MAX];
@@ -900,7 +1173,8 @@ static void get_flatpak_count(char *out, size_t size) {
             home
         );
 
-        int user_count = count_dir_entries(user_path);
+        int user_count =
+            count_dir_entries(user_path);
 
         if (user_count >= 0) {
             total += user_count;
@@ -908,9 +1182,7 @@ static void get_flatpak_count(char *out, size_t size) {
         }
     }
 
-    if (!checked_any) {
-        strncpy(out, "N/A", size);
-    } else {
+    if (checked_any) {
         snprintf(
             out,
             size,
@@ -920,8 +1192,12 @@ static void get_flatpak_count(char *out, size_t size) {
     }
 }
 
-static void get_os_age(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+static void get_os_age(
+    char *out,
+    size_t size
+) {
+    set_default(out, size);
+    if (!out || size == 0) return;
 
     struct statx stx;
 
@@ -935,54 +1211,76 @@ static void get_os_age(char *out, size_t size) {
         ) == 0 &&
         (stx.stx_mask & STATX_BTIME)
     ) {
-        time_t btime = stx.stx_btime.tv_sec;
+        time_t btime =
+            stx.stx_btime.tv_sec;
 
         struct tm tm_info;
 
-        localtime_r(
-            &btime,
-            &tm_info
-        );
+        if (localtime_r(
+                &btime,
+                &tm_info
+            )) {
 
-        strftime(
-            out,
-            size,
-            "%Y-%m-%d",
-            &tm_info
-        );
+            strftime(
+                out,
+                size,
+                "%Y-%m-%d",
+                &tm_info
+            );
+        }
     }
 }
 
-static void get_os_uptime(char *out, size_t size) {
-    strncpy(out, "N/A", size);
+static void get_os_uptime(
+    char *out,
+    size_t size
+) {
+    set_default(out, size);
+    if (!out || size == 0) return;
 
-    FILE *fp = fopen("/proc/uptime", "r");
+    FILE *fp =
+        fopen("/proc/uptime", "r");
+
     if (!fp) return;
 
-    double seconds = 0;
+    double seconds = 0.0;
 
-    int ok = (
-        fscanf(fp, "%lf", &seconds) == 1
-    );
+    int ok =
+        fscanf(
+            fp,
+            "%lf",
+            &seconds
+        ) == 1;
 
     fclose(fp);
 
-    if (!ok) return;
+    if (!ok ||
+        seconds < 0.0) {
+        return;
+    }
 
-    long total_minutes = (long)(seconds / 60);
-    long days = total_minutes / (60 * 24);
-    long hours = (total_minutes / 60) % 24;
-    long minutes = total_minutes % 60;
+    long long total_minutes =
+        (long long)(seconds / 60.0);
+
+    long long days =
+        total_minutes / (60 * 24);
+
+    long long hours =
+        (total_minutes / 60) % 24;
+
+    long long minutes =
+        total_minutes % 60;
 
     char buf[64] = "";
     char part[32];
+
     int wrote = 0;
 
     if (days > 0) {
         snprintf(
             part,
             sizeof(part),
-            "%ld day%s",
+            "%lld day%s",
             days,
             days == 1 ? "" : "s"
         );
@@ -1008,7 +1306,7 @@ static void get_os_uptime(char *out, size_t size) {
         snprintf(
             part,
             sizeof(part),
-            "%ld hour%s",
+            "%lld hour%s",
             hours,
             hours == 1 ? "" : "s"
         );
@@ -1034,7 +1332,7 @@ static void get_os_uptime(char *out, size_t size) {
         snprintf(
             part,
             sizeof(part),
-            "%ld minute%s",
+            "%lld minute%s",
             minutes,
             minutes == 1 ? "" : "s"
         );
@@ -1046,13 +1344,12 @@ static void get_os_uptime(char *out, size_t size) {
         );
     }
 
-    strncpy(
+    snprintf(
         out,
-        buf,
-        size - 1
+        size,
+        "%s",
+        buf
     );
-
-    out[size - 1] = '\0';
 }
 
 void make_progress_bar(
@@ -1061,36 +1358,69 @@ void make_progress_bar(
     double percentage,
     int width
 ) {
-    if (percentage < 0) {
-        percentage = 0;
+    if (!out || size == 0) {
+        return;
     }
 
-    if (percentage > 100) {
-        percentage = 100;
+    if (percentage < 0.0) {
+        percentage = 0.0;
+    }
+
+    if (percentage > 100.0) {
+        percentage = 100.0;
+    }
+
+    if (width < 0) {
+        width = 0;
     }
 
     int filled =
         (int)((percentage / 100.0) * width);
 
-    char bar[128] = "";
+    size_t pos = 0;
 
-    strcat(bar, "[");
-
-    for (int i = 0; i < width; i++) {
-        if (i < filled) {
-            strcat(bar, "█");
-        } else {
-            strcat(bar, "░");
-        }
+    if (pos + 1 < size) {
+        out[pos++] = '[';
     }
 
-    snprintf(
-        out,
-        size,
-        "%s] %.0f%%",
-        bar,
-        percentage
-    );
+    for (
+        int i = 0;
+        i < width && pos + 1 < size;
+        i++
+    ) {
+        const char *block =
+            i < filled ? "█" : "░";
+
+        size_t block_len =
+            strlen(block);
+
+        if (pos + block_len >= size) {
+            break;
+        }
+
+        memcpy(
+            out + pos,
+            block,
+            block_len
+        );
+
+        pos += block_len;
+    }
+
+    if (pos + 1 < size) {
+        out[pos++] = ']';
+    }
+
+    if (pos < size) {
+        snprintf(
+            out + pos,
+            size - pos,
+            " %.0f%%",
+            percentage
+        );
+    }
+
+    out[size - 1] = '\0';
 }
 
 void print_color_palette(void) {
@@ -1115,7 +1445,13 @@ void print_color_palette(void) {
     printf("\n");
 }
 
-void collect_system_data(SystemData *data) {
+void collect_system_data(
+    SystemData *data
+) {
+    if (!data) {
+        return;
+    }
+
     get_os_name(
         data->os_name,
         sizeof(data->os_name)
