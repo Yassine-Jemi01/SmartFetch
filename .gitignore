@@ -11,3 +11,7 @@ SmartFetch-v1.0-windows/
 
 # Rust build artifacts
 /target/
+
+# Nix build results and direnv state
+/result
+/.direnv/
