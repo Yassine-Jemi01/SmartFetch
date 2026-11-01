@@ -290,15 +290,15 @@ fn truncate(value: &str, width: usize) -> String {
 
 pub fn render_static(snapshot: &SystemSnapshot, logo_name: &str) -> String {
     let logo_lines = clean_logo(logo_for(logo_name));
-    let panel = info_lines(snapshot, 64);
-    let logo_width = logo_lines.iter().map(|line| line.chars().count()).max().unwrap_or(0);
     let columns = terminal::size().map(|(columns, _)| columns as usize).unwrap_or(80);
+    let panel_width = columns.saturating_sub(2).min(64).max(20);
+    let panel = info_lines(snapshot, panel_width);
+    let logo_width = logo_lines.iter().map(|line| line.chars().count()).max().unwrap_or(0);
     let gap = 6;
     let mut output = String::new();
 
-    // Keep a visible gutter between the logo and the hardware panel. On narrow
-    // terminals stack the blocks instead of letting the art collide with text.
-    if columns >= logo_width + gap + 64 {
+    // Preserve a deliberate gutter. Stack the blocks when the terminal is narrow.
+    if columns >= logo_width + gap + panel_width {
         for row in 0..logo_lines.len().max(panel.len()) {
             let art = logo_lines.get(row).map(String::as_str).unwrap_or("");
             let info = panel.get(row).map(String::as_str).unwrap_or("");
@@ -487,15 +487,31 @@ fn char_density(character: char) -> f32 {
 fn logo_for(name: &str) -> &'static str {
     let name = name.to_ascii_lowercase();
 
-    // Prefer specific logos before generic family matching.
+    // Prefer a specific distro logo before trying its upstream family.
     if name.contains("endeavour") {
         include_str!("../Ascii_art/endeavouros_ascii.txt")
     } else if name.contains("cachy") {
         include_str!("../Ascii_art/cashyos_ascii.txt")
     } else if name.contains("mint") {
         include_str!("../Ascii_art/linuxmint_ascii.txt")
+    } else if name.contains("macos") || name.contains("darwin") {
+        include_str!("../Ascii_art/macos_ascii.txt")
+    } else if name.contains("freebsd") || name.contains("netbsd") {
+        include_str!("../Ascii_art/freebsd_ascii.txt")
     } else if name.contains("windows") {
         include_str!("../Ascii_art/windows_ascii.txt")
+    } else if name.contains("alpine") {
+        include_str!("../Ascii_art/alpine_ascii.txt")
+    } else if name.contains("opensuse") || name.contains("suse") || name.contains("tumbleweed") {
+        include_str!("../Ascii_art/opensuse_ascii.txt")
+    } else if name.contains("nixos") {
+        include_str!("../Ascii_art/nixos_ascii.txt")
+    } else if name.contains("gentoo") {
+        include_str!("../Ascii_art/gentoo_ascii.txt")
+    } else if name.contains("manjaro") || name.contains("garuda") || name.contains("artix") {
+        include_str!("../Ascii_art/manjaro_ascii.txt")
+    } else if name.contains("kali") {
+        include_str!("../Ascii_art/kali_ascii.txt")
     } else if name.contains("fedora")
         || name.contains("rhel")
         || name.contains("redhat")
@@ -505,20 +521,6 @@ fn logo_for(name: &str) -> &'static str {
         || name.contains("oracle")
     {
         include_str!("../Ascii_art/fedora_ascii.txt")
-    } else if name.contains("debian")
-        || name.contains("kali")
-        || name.contains("mx")
-        || name.contains("devuan")
-        || name.contains("deepin")
-    {
-        include_str!("../Ascii_art/debian_ascii.txt")
-    } else if name.contains("arch")
-        || name.contains("manjaro")
-        || name.contains("garuda")
-        || name.contains("artix")
-        || name.contains("steam")
-    {
-        include_str!("../Ascii_art/arch_ascii.txt")
     } else if name.contains("ubuntu")
         || name.contains("pop")
         || name.contains("zorin")
@@ -526,6 +528,14 @@ fn logo_for(name: &str) -> &'static str {
         || name.contains("neon")
     {
         include_str!("../Ascii_art/ubuntu_ascii.txt")
+    } else if name.contains("debian")
+        || name.contains("mx")
+        || name.contains("devuan")
+        || name.contains("deepin")
+    {
+        include_str!("../Ascii_art/debian_ascii.txt")
+    } else if name.contains("arch") || name.contains("steam") {
+        include_str!("../Ascii_art/arch_ascii.txt")
     } else {
         include_str!("../Ascii_art/default_ascii.txt")
     }
