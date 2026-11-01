@@ -1,0 +1,23 @@
+[package]
+name = "smartfetch"
+version = "1.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A fast, cross-platform system fetch with animated 3D terminal views"
+license = "MIT"
+repository = "https://github.com/Yassine-Jemi01/SmartFetch"
+readme = "README.md"
+
+[[bin]]
+name = "sfetch"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.29.0"
+sysinfo = "0.40.1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

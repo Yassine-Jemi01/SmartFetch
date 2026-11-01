@@ -1,77 +1,89 @@
-<h1 align="center">SmartFetch</h1>
-<p align="center">
-  <img
-    src="https://github.com/user-attachments/assets/2cc55b49-ffb5-4ddc-9e70-eefc43bf9135"
-    alt="SmartFetch Logo"
-    width="300">
-</p>
+# SmartFetch
 
-<p align="center">
-  A lightweight, blazing-fast system information tool written in pure C.
-</p>
+A fast, lightweight system information tool with an animated 3D terminal view.
 
-<p align="center">
-  <img src="https://img.shields.io/github/license/Yassine-Jemi01/SmartFetch?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/github/stars/Yassine-Jemi01/SmartFetch?style=for-the-badge" alt="Stars">
-  <img src="https://img.shields.io/github/forks/Yassine-Jemi01/SmartFetch?style=for-the-badge" alt="Forks">
-  <img src="https://img.shields.io/github/issues/Yassine-Jemi01/SmartFetch?style=for-the-badge" alt="Issues">
-</p>
+SmartFetch is moving to a Rust-based core and terminal renderer. Rust is not inherently faster than C; both compile to native code. The Rust transition is intended to make the cross-platform terminal engine safer to maintain while keeping the hot rendering path allocation-conscious.
 
----
+## Highlights
 
-<p align="center">
-  <img width="1366" height="768" alt="Preview_Image" src="https://github.com/user-attachments/assets/31cc2325-4f74-4ec2-952c-351b5c446828" />
-</p>
+- Fast static system summary.
+- sfetch --live: animated 3D distro-logo relief with live CPU, RAM, swap, and uptime.
+- sfetch --live --donut: rotating 3D donut with the same live system panel.
+- sfetch --donut: shortcut for the live donut mode.
+- sfetch --logo NAME: choose a built-in logo.
+- Adaptive layout: the artwork and hardware information have a clear gap; narrow terminals switch to a stacked layout instead of squeezing the logo against the text.
+- The live renderer uses a single buffered terminal frame and refreshes system statistics once per second.
 
-## Features
+## Quick start
 
-* **Blazing Fast:** Built with pure C and Direct System APIs for minimal resource usage and maximum performance.
-* **Dynamic ASCII Art:** Automatically detects your Linux distribution (`Fedora`, `Arch`, `Debian`, etc.) and renders the corresponding logo.
-* **Terminal Color Palette:** Displays a colorful 16-color block palette at the bottom for aesthetic screenshots.
-* **Detailed System Insights:** Displays CPU specs, real-time temperatures, RAM type & usage (Linux, requires root or `cap_dac_read_search` — granted automatically by `make install`), display resolution, disk space, GPU, and OS uptime.
-* **Standard Build System:** Uses a clean `Makefile` for simple, scalable compilation across platforms.
+Requirements: Rust 1.95 or newer and Cargo.
 
----
+~~~sh
+cargo build --release
+./target/release/sfetch
+~~~
 
-## Prerequisites
+On Unix-like systems, install under /usr/local:
 
-SmartFetch needs `gcc`/`make` and the **libcurl development headers** (used by the `--update` checker) to build. `libcap` is optional but recommended — without it, SmartFetch can still read the RAM type when run with `sudo`, but not as a regular user.
-
-```bash
-# Debian / Ubuntu
-sudo apt install build-essential libcurl4-openssl-dev libcap2-bin
-
-# Fedora
-sudo dnf install gcc make libcurl-devel libcap
-
-# Arch
-sudo pacman -S base-devel curl libcap
-```
-
-## Build & Installation
-
-Clone the repository and compile using `make`:
-
-```bash
-git clone https://github.com/Yassine-Jemi01/SmartFetch.git
-cd SmartFetch
-make
+~~~sh
 sudo make install
-```
+~~~
 
-During `sudo make install`, SmartFetch also grants itself the `cap_dac_read_search` capability (if `setcap` is available) so it can read your RAM type from `/sys/firmware/dmi/tables/DMI` without needing `sudo` every time you run it afterward.
+Or install under a user-owned prefix:
 
-<p align="center">
-  <img width="800" height="449" alt="sfetch" src="https://github.com/user-attachments/assets/62994abe-982b-47eb-8827-0029a0fad86b" />
-</p>
+~~~sh
+make install PREFIX="$HOME/.local"
+~~~
 
-## Windows Support (Beta)
+## Commands
 
-Compile using GCC / MinGW from the project root:
+~~~sh
+sfetch
+sfetch --live
+sfetch --live --donut
+sfetch --donut
+sfetch --logo fedora
+sfetch --help
+sfetch --version
+~~~
 
-```bash
-gcc C_code/main.c C_code/ui.c C_code/collect_windows.c -I./H_code -o sfetch.exe -lcurl -ladvapi32
-sfetch.exe
-```
+### Live controls
 
-> **Note:** Windows builds require a MinGW-compatible libcurl development package. `RAM Type`, `CPU Temp`, `OS Age`, and `Flatpak` are not currently implemented on Windows and will show `N/A`.
+- Q or Esc: quit and restore the terminal.
+- Space: pause or resume rotation.
+- R: refresh system information immediately.
+- Ctrl+C: exit; the terminal guard restores raw mode and the normal screen.
+
+The live screen uses the terminal's alternate buffer, so it does not overwrite the shell history.
+
+## Platform support
+
+The Rust system-information layer uses sysinfo, which currently supports Linux, macOS, Windows, FreeBSD, and NetBSD. The terminal interface uses crossterm, which supports Unix and Windows terminals.
+
+- Linux: reads the distribution name and ID from /etc/os-release, so detection is not limited to a fixed distro allowlist. Built-in artwork is provided for common distributions; unknown distributions use the generic fallback logo.
+- macOS and Windows: OS and host information are detected through the system-information layer.
+- BSD: FreeBSD and NetBSD are supported by the system-information dependency. BSD builds are included in cross-target checks where the toolchain permits them.
+
+Hardware sensor availability varies by operating system, permissions, drivers, and virtual-machine environment. Missing sensor values should be reported as unavailable rather than guessed.
+
+## Performance approach
+
+- Keep one System sampler alive instead of rebuilding it every frame.
+- Avoid process enumeration in the fetch display path.
+- Refresh changing system statistics at a one-second interval.
+- Precompute 3D scene points; each frame performs only rotation, projection, depth testing, and one buffered terminal write.
+- Release builds use LTO, one codegen unit, and stripping.
+
+## Development
+
+~~~sh
+cargo fmt --all -- --check
+cargo test --all-targets
+cargo build --release
+~~~
+
+The legacy C implementation is retained in C_code/ during the Rust migration. The Rust binary is the primary build target.
+
+## License
+
+MIT. See LICENSE.

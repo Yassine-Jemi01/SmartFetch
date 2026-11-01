@@ -1,48 +1,25 @@
-CC = gcc
-CFLAGS = -Wall -O2 -I./H_code
-LDLIBS = -lcurl
-GIT_HASH := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-CFLAGS += -DSF_VERSION=\"$(GIT_HASH)\"
-
-SRC = C_code/main.c C_code/ui.c C_code/collect.c
-OBJ = $(SRC:.c=.o)
-TARGET = sfetch
-
 PREFIX ?= /usr/local
-DATA_DIR = /usr/share/smartfetch
+BINARY = target/release/sfetch
 
-all: check-deps $(TARGET)
+all: release
 
-check-deps:
-	@echo '#include <curl/curl.h>' | $(CC) -E - >/dev/null 2>&1 || { \
-		echo "Error: libcurl development headers not found (curl/curl.h missing)."; \
-		echo ""; \
-		echo "Install them first:"; \
-		echo "  Debian/Ubuntu : sudo apt install libcurl4-openssl-dev"; \
-		echo "  Fedora        : sudo dnf install libcurl-devel"; \
-		echo "  Arch          : sudo pacman -S curl"; \
-		exit 1; \
-	}
+release:
+	cargo build --release
 
-$(TARGET): $(OBJ)
-	$(CC) $(OBJ) -o $@ $(LDLIBS)
+debug:
+	cargo build
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+install: release
+	install -d $(DESTDIR)$(PREFIX)/bin
+	install -m 755 $(BINARY) $(DESTDIR)$(PREFIX)/bin/sfetch
 
-install: $(TARGET)
-	mkdir -p $(DESTDIR)$(DATA_DIR)/Ascii_art
-	cp -r Ascii_art/* $(DESTDIR)$(DATA_DIR)/Ascii_art/
-	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	cp $(TARGET) $(DESTDIR)$(PREFIX)/bin/
-	@if command -v setcap >/dev/null 2>&1; then \
-		setcap cap_dac_read_search+ep $(DESTDIR)$(PREFIX)/bin/$(TARGET) && \
-		echo "==> granted cap_dac_read_search to $(DESTDIR)$(PREFIX)/bin/$(TARGET) (needed to read RAM type from DMI)"; \
-	else \
-		echo "==> setcap not found (install package 'libcap2-bin' / 'libcap' to enable RAM type detection without sudo)"; \
-	fi
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/sfetch
+
+test:
+	cargo test --all-targets
 
 clean:
-	rm -f C_code/*.o $(TARGET)
+	cargo clean
 
-.PHONY: all check-deps install clean
+.PHONY: all release debug install uninstall test clean
