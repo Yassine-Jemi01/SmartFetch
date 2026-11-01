@@ -590,7 +590,7 @@ fn render_scene(scene: &Scene, angle: f32, canvas: &mut Canvas) -> Vec<String> {
 
     let scale_x = (width as f32 * 0.42) / scene.extent_x.max(0.5);
     // Terminal cells are roughly twice as tall as they are wide.
-    let scale_y = (height as f32 * 0.21) / scene.extent_y.max(0.5);
+    let scale_y = ((width as f32 * 0.21).min(height as f32 * 0.42)) / scene.extent_y.max(0.5);
     let light = (-0.35_f32, -0.45_f32, 0.82_f32);
 
     for point in &scene.points {
