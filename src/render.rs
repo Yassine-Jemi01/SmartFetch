@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -36,6 +36,7 @@ struct Scene {
     points: Vec<Point>,
     extent_x: f32,
     extent_y: f32,
+    color: u8,
 }
 
 struct Canvas {
@@ -47,6 +48,8 @@ struct Canvas {
 
 impl Canvas {
     fn new(width: usize, height: usize) -> Self {
+        let width = width.max(1);
+        let height = height.max(1);
         let len = width.saturating_mul(height);
         Self {
             width,
@@ -54,6 +57,24 @@ impl Canvas {
             cells: vec![b' '; len],
             depth: vec![f32::NEG_INFINITY; len],
         }
+    }
+
+    fn resize(&mut self, width: usize, height: usize) {
+        let width = width.max(1);
+        let height = height.max(1);
+        if self.width != width || self.height != height {
+            self.width = width;
+            self.height = height;
+            let len = width.saturating_mul(height);
+            self.cells.resize(len, b' ');
+            self.depth.resize(len, f32::NEG_INFINITY);
+        }
+        self.clear();
+    }
+
+    fn clear(&mut self) {
+        self.cells.fill(b' ');
+        self.depth.fill(f32::NEG_INFINITY);
     }
 
     fn plot(&mut self, x: f32, y: f32, z: f32, brightness: f32) {
@@ -114,9 +135,11 @@ pub fn run_live(
     let mut stdout = io::stdout();
     let mut snapshot = sampler.snapshot();
     let scene = Scene::new(mode, logo_name);
+    let mut canvas = Canvas::new(1, 1);
     let mut angle = 0.0_f32;
     let mut paused = false;
     let mut next_sample = Instant::now() + SAMPLE_INTERVAL;
+    let mut previous_size = None;
 
     loop {
         if event::poll(Duration::from_millis(1))? {
@@ -148,6 +171,12 @@ pub fn run_live(
         }
 
         let (columns, rows) = terminal::size()?;
+        if previous_size != Some((columns, rows)) {
+            // A full clear is only needed after a resize, never on every animation frame.
+            execute!(stdout, Clear(ClearType::All))?;
+            previous_size = Some((columns, rows));
+        }
+
         let frame = render_live_frame(
             &scene,
             angle,
@@ -155,15 +184,19 @@ pub fn run_live(
             columns as usize,
             rows as usize,
             paused,
+            &mut canvas,
         );
 
-        // One queued frame and one flush keeps terminal output smooth and cheap.
-        queue!(
-            stdout,
-            crossterm::cursor::MoveTo(0, 0),
-            Clear(ClearType::All),
-            Print(frame)
-        )?;
+        // Rewrite rows in place and clear only their tails. This avoids the visible
+        // full-screen flash and prevents stale characters after a shorter frame.
+        for (row, line) in frame.iter().enumerate() {
+            queue!(
+                stdout,
+                crossterm::cursor::MoveTo(0, row as u16),
+                Print(line),
+                Clear(ClearType::UntilNewLine)
+            )?;
+        }
         stdout.flush()?;
         thread::sleep(FRAME_INTERVAL);
     }
@@ -183,50 +216,70 @@ fn render_live_frame(
     columns: usize,
     rows: usize,
     paused: bool,
-) -> String {
-    let columns = columns.max(30);
-    let rows = rows.max(10);
-    let wide = columns >= 100 && rows >= 20;
-    let (scene_width, scene_height) = if wide {
-        ((columns / 2).min(50).saturating_sub(3).max(24), (rows - 3).min(22).max(10))
-    } else {
-        ((columns - 2).min(52).max(20), ((rows / 2).saturating_sub(2)).min(18).max(8))
-    };
-
-    let artwork = render_scene(scene, angle, scene_width, scene_height);
-    let panel = info_lines(snapshot, columns.saturating_sub(scene_width + 4).max(20));
-    let mut output = String::with_capacity(columns.saturating_mul(rows));
-
-    if wide {
-        let height = artwork.len().max(panel.len());
-        for row in 0..height {
-            let art = artwork.get(row).map(String::as_str).unwrap_or("");
-            let info = panel.get(row).map(String::as_str).unwrap_or("");
-            output.push_str("\x1b[96m");
-            output.push_str(&format!("{art:<scene_width$}"));
-            output.push_str("\x1b[0m    ");
-            output.push_str(info);
-            output.push('\n');
-        }
-    } else {
-        for line in artwork {
-            output.push_str("\x1b[96m");
-            output.push_str(&line);
-            output.push_str("\x1b[0m\n");
-        }
-        output.push('\n');
-        for line in panel {
-            output.push_str(&line);
-            output.push('\n');
-        }
-    }
-
-    output.push('\n');
-    output.push_str(if paused {
+    canvas: &mut Canvas,
+) -> Vec<String> {
+    let columns = columns.max(1);
+    let rows = rows.max(1);
+    let panel_width = columns.saturating_sub(2).max(12);
+    let panel = info_lines(snapshot, panel_width);
+    let status = if paused {
         "PAUSED  |  Q quit  Space resume  R refresh"
     } else {
         "LIVE  |  Q quit  Space pause  R refresh"
-    });
+    };
+
+    let mut output = Vec::with_capacity(rows);
+
+    if columns >= 76 {
+        // Even an 80-column terminal can use a side-by-side layout. This keeps
+        // the information panel from pushing the artwork below the visible screen.
+        let scene_width = (columns / 3).min(48).max(20);
+        let scene_height = rows.saturating_sub(1).min(24).max(1);
+        let gap = 3;
+        let info_width = columns.saturating_sub(scene_width + gap).max(12);
+        canvas.resize(scene_width, scene_height);
+        let artwork = render_scene(scene, angle, canvas);
+        let panel = info_lines(snapshot, info_width);
+
+        for row in 0..rows.saturating_sub(1) {
+            let art = artwork.get(row).map(String::as_str).unwrap_or("");
+            let info = panel.get(row).map(String::as_str).unwrap_or("");
+            let padded_art = format!("{art:<scene_width$}");
+            let art = colorize(&padded_art, scene.color, true);
+            let info = style_info_line(info);
+            output.push(format!("{art}{}{}", " ".repeat(gap), info));
+        }
+    } else {
+        // Small terminals use a stacked layout, but the panel is clipped to the
+        // actual remaining rows instead of being allowed to scroll the screen.
+        let artwork_room = rows.saturating_sub(panel.len() + 1).min(12);
+        let scene_height = artwork_room.max(3);
+        let scene_width = columns.saturating_sub(2).max(8).min(52);
+        canvas.resize(scene_width, scene_height);
+        let artwork = render_scene(scene, angle, canvas);
+
+        for line in artwork.iter().take(rows.saturating_sub(1)) {
+            output.push(colorize(line, scene.color, true));
+        }
+        let remaining = rows.saturating_sub(output.len() + 1);
+        for line in panel.iter().take(remaining) {
+            output.push(style_info_line(line));
+        }
+    }
+
+    if output.len() >= rows {
+        output.truncate(rows);
+        if let Some(last) = output.last_mut() {
+            *last = colorize(status, 46, true);
+        }
+    } else {
+        output.push(colorize(status, 46, true));
+    }
+
+    output.truncate(rows);
+    while output.len() < rows {
+        output.push(String::new());
+    }
     output
 }
 
@@ -298,8 +351,88 @@ fn needs_stacked_layout(columns: usize, logo_width: usize, gap: usize, panel_wid
     columns < logo_width.saturating_add(gap).saturating_add(panel_width)
 }
 
+fn colorize(value: &str, color: u8, bold: bool) -> String {
+    if std::env::var_os("NO_COLOR").is_some() || !io::stdout().is_terminal() {
+        return value.to_string();
+    }
+    let intensity = if bold { "1" } else { "0" };
+    format!("\x1b[{intensity};38;5;{color}m{value}\x1b[0m")
+}
+
+fn ansi_color(value: &str) -> Option<u8> {
+    for sequence in value.split("\x1b[").skip(1) {
+        let Some(parameters) = sequence.split('m').next() else {
+            continue;
+        };
+        let numbers: Vec<u16> = parameters
+            .split(';')
+            .filter_map(|part| part.parse::<u16>().ok())
+            .collect();
+
+        for (index, code) in numbers.iter().copied().enumerate() {
+            if code == 38 && numbers.get(index + 1) == Some(&5) {
+                return numbers.get(index + 2).copied().map(|value| value.min(255) as u8);
+            }
+            if code == 38 && numbers.get(index + 1) == Some(&2) {
+                if let (Some(red), Some(green), Some(blue)) = (
+                    numbers.get(index + 2),
+                    numbers.get(index + 3),
+                    numbers.get(index + 4),
+                ) {
+                    let to_cube = |value: u16| ((value.min(255) * 5 + 127) / 255) as u8;
+                    return Some(16 + 36 * to_cube(*red) + 6 * to_cube(*green) + to_cube(*blue));
+                }
+            }
+            if (30..=37).contains(&code) {
+                return Some((code - 30) as u8);
+            }
+            if (90..=97).contains(&code) {
+                return Some((code - 90 + 8) as u8);
+            }
+        }
+    }
+    None
+}
+
+fn logo_color(logo: &str) -> u8 {
+    ansi_color(logo).unwrap_or(45)
+}
+
+fn style_info_line(line: &str) -> String {
+    if line.trim().is_empty() {
+        return String::new();
+    }
+    if line.starts_with("SMARTFETCH") {
+        return colorize(line, 45, true);
+    }
+    if line.starts_with('─') {
+        return colorize(line, 240, false);
+    }
+
+    let label_end = line.find(char::is_whitespace).unwrap_or(line.len());
+    let label = &line[..label_end];
+    let rest = &line[label_end..];
+    let color = match label {
+        "OS" => 39,
+        "Host" | "Kernel" => 244,
+        "CPU" => 45,
+        "Cores" => 81,
+        "Temp" => 214,
+        "Disk" => 81,
+        "GPU" => 141,
+        "RAM" => 46,
+        "SWAP" => 201,
+        "Uptime" => 39,
+        "Refresh" => 244,
+        _ => 45,
+    };
+    format!("{}{}", colorize(label, color, true), rest)
+}
+
 pub fn render_static(snapshot: &SystemSnapshot, logo_name: &str) -> String {
-    let logo_lines = clean_logo(logo_for(logo_name));
+    let raw_logo = logo_for(logo_name);
+    let raw_lines: Vec<&str> = raw_logo.lines().collect();
+    let logo_lines = clean_logo(raw_logo);
     let columns = terminal::size().map(|(columns, _)| columns as usize).unwrap_or(80);
     let panel_width = columns.saturating_sub(2).min(64).max(20);
     let panel = info_lines(snapshot, panel_width);
@@ -307,24 +440,30 @@ pub fn render_static(snapshot: &SystemSnapshot, logo_name: &str) -> String {
     let gap = 6;
     let mut output = String::new();
 
-    // Preserve a deliberate gutter. Stack the blocks when the terminal is narrow.
     if !needs_stacked_layout(columns, logo_width, gap, panel_width) {
         for row in 0..logo_lines.len().max(panel.len()) {
-            let art = logo_lines.get(row).map(String::as_str).unwrap_or("");
+            let plain_art = logo_lines.get(row).map(String::as_str).unwrap_or("");
+            let raw_art = raw_lines.get(row).copied().unwrap_or("");
+            let color = ansi_color(raw_art).unwrap_or_else(|| logo_color(raw_logo));
+            let art = colorize(plain_art, color, true);
+            let padding = " ".repeat(logo_width.saturating_sub(plain_art.chars().count()));
             let info = panel.get(row).map(String::as_str).unwrap_or("");
-            output.push_str(&format!("{art:<logo_width$}"));
+            output.push_str(&art);
+            output.push_str(&padding);
             output.push_str(&" ".repeat(gap));
-            output.push_str(info);
+            output.push_str(&style_info_line(info));
             output.push('\n');
         }
     } else {
-        for line in &logo_lines {
-            output.push_str(line);
+        for (row, line) in logo_lines.iter().enumerate() {
+            let raw_art = raw_lines.get(row).copied().unwrap_or("");
+            let color = ansi_color(raw_art).unwrap_or_else(|| logo_color(raw_logo));
+            output.push_str(&colorize(line, color, true));
             output.push('\n');
         }
         output.push('\n');
         for line in &panel {
-            output.push_str(line);
+            output.push_str(&style_info_line(line));
             output.push('\n');
         }
     }
@@ -367,6 +506,7 @@ impl Scene {
             points,
             extent_x: major + minor + 0.1,
             extent_y: major + minor + 0.1,
+            color: 45,
         }
     }
 
@@ -433,14 +573,15 @@ impl Scene {
             points,
             extent_x: width as f32 / 2.0 + 1.5,
             extent_y: height as f32 / 2.0 + 1.5,
+            color: logo_color(logo),
         }
     }
 }
 
-fn render_scene(scene: &Scene, angle: f32, width: usize, height: usize) -> Vec<String> {
-    let width = width.max(8);
-    let height = height.max(5);
-    let mut canvas = Canvas::new(width, height);
+fn render_scene(scene: &Scene, angle: f32, canvas: &mut Canvas) -> Vec<String> {
+    canvas.clear();
+    let width = canvas.width;
+    let height = canvas.height;
 
     let angle_x = angle * 0.63 + 0.28;
     let angle_y = angle;
@@ -448,7 +589,8 @@ fn render_scene(scene: &Scene, angle: f32, width: usize, height: usize) -> Vec<S
     let (sin_y, cos_y) = angle_y.sin_cos();
 
     let scale_x = (width as f32 * 0.42) / scene.extent_x.max(0.5);
-    let scale_y = (height as f32 * 0.42) / scene.extent_y.max(0.5);
+    // Terminal cells are roughly twice as tall as they are wide.
+    let scale_y = (height as f32 * 0.21) / scene.extent_y.max(0.5);
     let light = (-0.35_f32, -0.45_f32, 0.82_f32);
 
     for point in &scene.points {
@@ -462,7 +604,6 @@ fn render_scene(scene: &Scene, angle: f32, width: usize, height: usize) -> Vec<S
         let nx2 = point.nx * cos_y + nz1 * sin_y;
         let nz2 = -point.nx * sin_y + nz1 * cos_y;
 
-        // A light perspective effect adds depth without making the shape unstable.
         let perspective = 5.0 / (5.0 - z2).max(2.0);
         let screen_x = width as f32 / 2.0 + x2 * scale_x * perspective;
         let screen_y = height as f32 / 2.0 - y1 * scale_y * perspective;
@@ -600,6 +741,12 @@ mod tests {
         let scene = Scene::donut();
         assert!(!scene.points.is_empty());
         assert!(scene.extent_x > 1.0);
+    }
+
+    #[test]
+    fn ansi_logo_colors_are_detected() {
+        assert_eq!(super::ansi_color("\x1b[34mFedora\x1b[0m"), Some(4));
+        assert_eq!(super::ansi_color("\x1b[38;5;196mLogo\x1b[0m"), Some(196));
     }
 
     #[test]
