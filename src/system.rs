@@ -2,7 +2,7 @@
 use std::fs;
 use std::time::Duration;
 
-use sysinfo::{CpuRefreshKind, System};
+use sysinfo::{Components, CpuRefreshKind, System};
 
 #[derive(Clone, Debug)]
 pub struct SystemSnapshot {
@@ -14,6 +14,7 @@ pub struct SystemSnapshot {
     pub logical_cores: usize,
     pub physical_cores: usize,
     pub cpu_usage: f32,
+    pub cpu_temperature: Option<f32>,
     pub used_memory: u64,
     pub total_memory: u64,
     pub used_swap: u64,
@@ -23,6 +24,7 @@ pub struct SystemSnapshot {
 
 pub struct SystemSampler {
     system: System,
+    components: Option<Components>,
 }
 
 impl SystemSampler {
@@ -37,12 +39,16 @@ impl SystemSampler {
         std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL.max(Duration::from_millis(200)));
         system.refresh_cpu_usage();
 
-        Ok(Self { system })
+        let components = Components::new_with_refreshed_list().ok();
+        Ok(Self { system, components })
     }
 
     pub fn refresh(&mut self) -> SystemSnapshot {
         self.system.refresh_cpu_usage();
         self.system.refresh_memory();
+        if let Some(components) = &mut self.components {
+            components.refresh(false);
+        }
         self.snapshot()
     }
 
@@ -62,6 +68,34 @@ impl SystemSampler {
         let host_name = System::host_name().unwrap_or_else(|_| "unknown".to_string());
         let kernel = System::kernel_version().unwrap_or_else(|_| "unknown".to_string());
 
+        let cpu_temperature = self.components.as_ref().and_then(|components| {
+            components
+                .iter()
+                .filter_map(|component| {
+                    component.temperature().map(|temperature| {
+                        let label = component.label().to_ascii_lowercase();
+                        (label, temperature)
+                    })
+                })
+                .find(|(label, temperature)| {
+                    temperature.is_finite()
+                        && (label.contains("cpu")
+                            || label.contains("package")
+                            || label.contains("core")
+                            || label.contains("tctl")
+                            || label.contains("tdie")
+                            || label.contains("peci"))
+                })
+                .or_else(|| {
+                    components.iter().find_map(|component| {
+                        component.temperature().filter(|value| value.is_finite()).map(|value| {
+                            (component.label().to_ascii_lowercase(), value)
+                        })
+                    })
+                })
+                .map(|(_, temperature)| temperature)
+        });
+
         SystemSnapshot {
             os_name,
             distro_id,
@@ -71,6 +105,7 @@ impl SystemSampler {
             logical_cores,
             physical_cores,
             cpu_usage: self.system.global_cpu_usage().clamp(0.0, 100.0),
+            cpu_temperature,
             used_memory: self.system.used_memory(),
             total_memory: self.system.total_memory(),
             used_swap: self.system.used_swap(),

@@ -27,8 +27,8 @@ fn parse_args() -> Result<Args, String> {
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "-l" | "--live" => parsed.live = true,
-            "-d" | "--donut" => {
+            "-l" | "-live" | "--live" => parsed.live = true,
+            "-d" | "-donut" | "--donut" => {
                 parsed.live = true;
                 parsed.donut = true;
             }
@@ -55,8 +55,10 @@ SmartFetch - fast system information with animated 3D terminal rendering
 USAGE:
   sfetch                  Show system information
   sfetch --live            3D distro logo with live system statistics
+  sfetch -live             Short alias for --live
   sfetch --live --donut    Rotating 3D donut with live statistics
   sfetch --donut           Shortcut for --live --donut
+  sfetch -donut            Short alias for --donut
   sfetch --logo <name>     Select a built-in distro logo
   sfetch --help            Show this help
   sfetch --version         Show version

@@ -13,6 +13,7 @@ SmartFetch is moving to a Rust-based core and terminal renderer. Rust is not inh
 - sfetch --logo NAME: choose a built-in logo.
 - Adaptive layout: the artwork and hardware information have a clear gap; narrow terminals switch to a stacked layout instead of squeezing the logo against the text.
 - The live renderer uses a single buffered terminal frame and refreshes system statistics once per second.
+- CPU temperature is collected through available OS sensor interfaces when exposed by the platform; unavailable sensors display N/A rather than a guessed value.
 
 ## Quick start
 
