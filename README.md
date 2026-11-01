@@ -73,7 +73,7 @@ Hardware sensor availability varies by operating system, permissions, drivers, a
 - Keep one System sampler alive instead of rebuilding it every frame.
 - Avoid process enumeration in the fetch display path.
 - Refresh changing system statistics at a one-second interval.
-- Precompute 3D scene points; each frame performs only rotation, projection, depth testing, and one buffered terminal write.
+- Precompute 3D scene points and reuse the character/depth buffers across frames; each frame performs only rotation, projection, depth testing, and one buffered terminal write.
 - Release builds use LTO, one codegen unit, and stripping.
 
 ## Development

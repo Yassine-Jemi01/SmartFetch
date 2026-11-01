@@ -195,7 +195,7 @@ fn render_live_frame(
 
     let artwork = render_scene(scene, angle, scene_width, scene_height);
     let panel = info_lines(snapshot, columns.saturating_sub(scene_width + 4).max(20));
-    let mut output = String::new();
+    let mut output = String::with_capacity(columns.saturating_mul(rows));
 
     if wide {
         let height = artwork.len().max(panel.len());
