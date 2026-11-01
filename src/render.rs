@@ -388,23 +388,43 @@ impl Scene {
                     continue;
                 }
 
-                let x = column as f32 - width as f32 / 2.0;
-                let y = height as f32 / 2.0 - row as f32;
+                let cell_x = column as f32 - width as f32 / 2.0;
+                let cell_y = height as f32 / 2.0 - row as f32;
                 let depth = 0.25 + density * 1.55;
+                let offsets = [-0.28_f32, 0.28_f32];
                 let slices = 5;
-                for slice in 0..=slices {
-                    let t = slice as f32 / slices as f32;
-                    let z = -depth / 2.0 + depth * t;
-                    let is_face = slice == 0 || slice == slices;
-                    points.push(Point {
-                        x,
-                        y,
-                        z,
-                        nx: 0.0,
-                        ny: 0.0,
-                        nz: if slice == 0 { -1.0 } else if slice == slices { 1.0 } else { 0.22 },
-                        shade: if is_face { 1.0 } else { 0.62 },
-                    });
+
+                // Sample each character cell as a tiny 2x2 height-map tile.
+                // Front/back faces and outer edges receive different normals,
+                // so the rotating logo reads as a solid relief rather than dots.
+                for offset_y in offsets {
+                    for offset_x in offsets {
+                        for slice in 0..=slices {
+                            let t = slice as f32 / slices as f32;
+                            let z = -depth / 2.0 + depth * t;
+                            let is_front = slice == 0;
+                            let is_back = slice == slices;
+                            let (nx, ny, nz) = if is_front {
+                                (0.0, 0.0, -1.0)
+                            } else if is_back {
+                                (0.0, 0.0, 1.0)
+                            } else if offset_x > 0.0 {
+                                (1.0, 0.0, 0.0)
+                            } else {
+                                (-1.0, 0.0, 0.0)
+                            };
+
+                            points.push(Point {
+                                x: cell_x + offset_x,
+                                y: cell_y + offset_y,
+                                z,
+                                nx,
+                                ny,
+                                nz,
+                                shade: if is_front || is_back { 1.0 } else { 0.66 },
+                            });
+                        }
+                    }
                 }
             }
         }
