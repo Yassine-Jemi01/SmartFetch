@@ -8,3 +8,6 @@ sfetch
 *.exe
 *.zip
 SmartFetch-v1.0-windows/
+
+# Rust build artifacts
+/target/
