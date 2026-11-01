@@ -221,6 +221,7 @@ fn render_live_frame(
     let columns = columns.max(1);
     let rows = rows.max(1);
     let panel_width = columns.saturating_sub(2).max(12);
+    let panel = info_lines(snapshot, panel_width);
     let status = if paused {
         "PAUSED  |  Q quit  Space resume  R refresh"
     } else {
