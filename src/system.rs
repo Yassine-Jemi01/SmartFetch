@@ -1,7 +1,8 @@
+#[cfg(target_os = "linux")]
 use std::fs;
 use std::time::Duration;
 
-use sysinfo::System;
+use sysinfo::{CpuRefreshKind, System};
 
 #[derive(Clone, Debug)]
 pub struct SystemSnapshot {
@@ -27,14 +28,13 @@ pub struct SystemSampler {
 impl SystemSampler {
     pub fn new() -> Result<Self, String> {
         // Do not enumerate every running process just to render a fetch screen.
-        let mut system = System::new().map_err(|error| {
-            format!("could not initialize system information: {error}")
-        })?;
-        system.refresh_cpu_all();
+        let mut system = System::new()
+            .map_err(|error| format!("could not initialize system information: {error}"))?;
+        system.refresh_cpu_list(CpuRefreshKind::everything());
         system.refresh_memory();
 
-        // CPU usage is calculated from deltas; the first sample is only a baseline.
-        std::thread::sleep(Duration::from_millis(120));
+        // CPU usage is calculated from deltas; wait for a valid second sample.
+        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL.max(Duration::from_millis(200)));
         system.refresh_cpu_usage();
 
         Ok(Self { system })
@@ -48,10 +48,7 @@ impl SystemSampler {
 
     pub fn snapshot(&self) -> SystemSnapshot {
         let logical_cores = self.system.cpus().len();
-        let physical_cores = System::physical_core_count()
-            .ok()
-            .flatten()
-            .unwrap_or(logical_cores);
+        let physical_cores = System::physical_core_count().unwrap_or(logical_cores);
 
         let cpu_name = self
             .system
@@ -62,8 +59,8 @@ impl SystemSampler {
             .unwrap_or_else(|| "Unknown CPU".to_string());
 
         let (os_name, distro_id) = detect_distribution();
-        let host_name = System::host_name().unwrap_or_else(|| "unknown".to_string());
-        let kernel = System::kernel_version().unwrap_or_else(|| "unknown".to_string());
+        let host_name = System::host_name().unwrap_or_else(|_| "unknown".to_string());
+        let kernel = System::kernel_version().unwrap_or_else(|_| "unknown".to_string());
 
         SystemSnapshot {
             os_name,
@@ -78,7 +75,7 @@ impl SystemSampler {
             total_memory: self.system.total_memory(),
             used_swap: self.system.used_swap(),
             total_swap: self.system.total_swap(),
-            uptime_seconds: System::uptime(),
+            uptime_seconds: System::uptime().unwrap_or_default(),
         }
     }
 }
@@ -86,23 +83,24 @@ impl SystemSampler {
 fn detect_distribution() -> (String, String) {
     #[cfg(target_os = "linux")]
     {
-        let pretty_name = os_release_value("PRETTY_NAME")
-            .unwrap_or_else(|| "Linux".to_string());
-        let distro_id = os_release_value("ID")
-            .or_else(|| os_release_value("ID_LIKE"))
-            .unwrap_or_else(|| "linux".to_string())
-            .split_whitespace()
-            .next()
-            .unwrap_or("linux")
-            .to_ascii_lowercase();
-        return (pretty_name, distro_id);
+        let pretty_name =
+            os_release_value("PRETTY_NAME").unwrap_or_else(|| "Linux".to_string());
+        let distro_id = os_release_value("ID").unwrap_or_else(|| "linux".to_string());
+        let id_like = os_release_value("ID_LIKE").unwrap_or_default();
+        // Keep ID_LIKE so derivative distributions can use their family logo as a fallback.
+        let logo_key = format!("{distro_id} {id_like}").to_ascii_lowercase();
+        return (pretty_name, logo_key);
     }
 
     #[cfg(target_os = "macos")]
     {
         let version = System::os_version().unwrap_or_default();
         return (
-            if version.is_empty() { "macOS".to_string() } else { format!("macOS {version}") },
+            if version.is_empty() {
+                "macOS".to_string()
+            } else {
+                format!("macOS {version}")
+            },
             "macos".to_string(),
         );
     }
@@ -111,7 +109,11 @@ fn detect_distribution() -> (String, String) {
     {
         let version = System::os_version().unwrap_or_default();
         return (
-            if version.is_empty() { "Windows".to_string() } else { format!("Windows {version}") },
+            if version.is_empty() {
+                "Windows".to_string()
+            } else {
+                format!("Windows {version}")
+            },
             "windows".to_string(),
         );
     }
@@ -120,7 +122,11 @@ fn detect_distribution() -> (String, String) {
     {
         let version = System::os_version().unwrap_or_default();
         return (
-            if version.is_empty() { "FreeBSD".to_string() } else { format!("FreeBSD {version}") },
+            if version.is_empty() {
+                "FreeBSD".to_string()
+            } else {
+                format!("FreeBSD {version}")
+            },
             "freebsd".to_string(),
         );
     }
@@ -129,7 +135,11 @@ fn detect_distribution() -> (String, String) {
     {
         let version = System::os_version().unwrap_or_default();
         return (
-            if version.is_empty() { "NetBSD".to_string() } else { format!("NetBSD {version}") },
+            if version.is_empty() {
+                "NetBSD".to_string()
+            } else {
+                format!("NetBSD {version}")
+            },
             "netbsd".to_string(),
         );
     }
@@ -142,9 +152,13 @@ fn detect_distribution() -> (String, String) {
         target_os = "netbsd"
     )))]
     {
-        let name = System::name().unwrap_or_else(|| std::env::consts::OS.to_string());
+        let name = System::name().unwrap_or_else(|_| std::env::consts::OS.to_string());
         let version = System::os_version().unwrap_or_default();
-        let label = if version.is_empty() { name } else { format!("{name} {version}") };
+        let label = if version.is_empty() {
+            name
+        } else {
+            format!("{name} {version}")
+        };
         (label, std::env::consts::OS.to_string())
     }
 }
@@ -158,11 +172,6 @@ fn os_release_value(key: &str) -> Option<String> {
         let value = value.trim().trim_matches('"').trim_matches('\'');
         (!value.is_empty()).then(|| value.to_string())
     })
-}
-
-#[cfg(not(target_os = "linux"))]
-fn os_release_value(_key: &str) -> Option<String> {
-    None
 }
 
 pub fn format_bytes(bytes: u64) -> String {

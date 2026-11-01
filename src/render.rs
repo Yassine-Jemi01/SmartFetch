@@ -289,19 +289,34 @@ fn truncate(value: &str, width: usize) -> String {
 }
 
 pub fn render_static(snapshot: &SystemSnapshot, logo_name: &str) -> String {
-    let logo = logo_for(logo_name);
-    let logo_lines = clean_logo(logo);
+    let logo_lines = clean_logo(logo_for(logo_name));
     let panel = info_lines(snapshot, 64);
     let logo_width = logo_lines.iter().map(|line| line.chars().count()).max().unwrap_or(0);
+    let columns = terminal::size().map(|(columns, _)| columns as usize).unwrap_or(80);
+    let gap = 6;
     let mut output = String::new();
 
-    for row in 0..logo_lines.len().max(panel.len()) {
-        let art = logo_lines.get(row).map(String::as_str).unwrap_or("");
-        let info = panel.get(row).map(String::as_str).unwrap_or("");
-        output.push_str(&format!("{art:<logo_width$}"));
-        output.push_str("      ");
-        output.push_str(info);
+    // Keep a visible gutter between the logo and the hardware panel. On narrow
+    // terminals stack the blocks instead of letting the art collide with text.
+    if columns >= logo_width + gap + 64 {
+        for row in 0..logo_lines.len().max(panel.len()) {
+            let art = logo_lines.get(row).map(String::as_str).unwrap_or("");
+            let info = panel.get(row).map(String::as_str).unwrap_or("");
+            output.push_str(&format!("{art:<logo_width$}"));
+            output.push_str(&" ".repeat(gap));
+            output.push_str(info);
+            output.push('\n');
+        }
+    } else {
+        for line in &logo_lines {
+            output.push_str(line);
+            output.push('\n');
+        }
         output.push('\n');
+        for line in &panel {
+            output.push_str(line);
+            output.push('\n');
+        }
     }
     output
 }
@@ -471,22 +486,46 @@ fn char_density(character: char) -> f32 {
 
 fn logo_for(name: &str) -> &'static str {
     let name = name.to_ascii_lowercase();
-    if name.contains("fedora") {
-        include_str!("../Ascii_art/fedora_ascii.txt")
-    } else if name.contains("arch") {
-        include_str!("../Ascii_art/arch_ascii.txt")
-    } else if name.contains("debian") {
-        include_str!("../Ascii_art/debian_ascii.txt")
-    } else if name.contains("ubuntu") || name.contains("pop") || name.contains("zorin") {
-        include_str!("../Ascii_art/ubuntu_ascii.txt")
-    } else if name.contains("mint") {
-        include_str!("../Ascii_art/linuxmint_ascii.txt")
-    } else if name.contains("endeavour") {
+
+    // Prefer specific logos before generic family matching.
+    if name.contains("endeavour") {
         include_str!("../Ascii_art/endeavouros_ascii.txt")
     } else if name.contains("cachy") {
         include_str!("../Ascii_art/cashyos_ascii.txt")
+    } else if name.contains("mint") {
+        include_str!("../Ascii_art/linuxmint_ascii.txt")
     } else if name.contains("windows") {
         include_str!("../Ascii_art/windows_ascii.txt")
+    } else if name.contains("fedora")
+        || name.contains("rhel")
+        || name.contains("redhat")
+        || name.contains("centos")
+        || name.contains("rocky")
+        || name.contains("alma")
+        || name.contains("oracle")
+    {
+        include_str!("../Ascii_art/fedora_ascii.txt")
+    } else if name.contains("debian")
+        || name.contains("kali")
+        || name.contains("mx")
+        || name.contains("devuan")
+        || name.contains("deepin")
+    {
+        include_str!("../Ascii_art/debian_ascii.txt")
+    } else if name.contains("arch")
+        || name.contains("manjaro")
+        || name.contains("garuda")
+        || name.contains("artix")
+        || name.contains("steam")
+    {
+        include_str!("../Ascii_art/arch_ascii.txt")
+    } else if name.contains("ubuntu")
+        || name.contains("pop")
+        || name.contains("zorin")
+        || name.contains("elementary")
+        || name.contains("neon")
+    {
+        include_str!("../Ascii_art/ubuntu_ascii.txt")
     } else {
         include_str!("../Ascii_art/default_ascii.txt")
     }
