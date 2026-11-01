@@ -60,7 +60,7 @@ The live screen uses the terminal's alternate buffer, so it does not overwrite t
 
 The Rust system-information layer uses sysinfo, which currently supports Linux, macOS, Windows, FreeBSD, and NetBSD. The terminal interface uses crossterm, which supports Unix and Windows terminals.
 
-- Linux: reads the distribution name and ID from /etc/os-release, so detection is not limited to a fixed distro allowlist. Built-in artwork is provided for common distributions; unknown distributions use the generic fallback logo.
+- Linux: reads ID and ID_LIKE from /etc/os-release instead of relying on a fixed distro allowlist. Built-in artwork currently covers Arch, CachyOS, EndeavourOS, Manjaro-family systems, Debian-family systems, Ubuntu-family systems, Fedora/RHEL-family systems, Alpine, openSUSE, NixOS, Gentoo, Kali, and Linux Mint. Unknown distributions still display their detected name with a generic logo.
 - macOS and Windows: OS and host information are detected through the system-information layer.
 - BSD: FreeBSD and NetBSD are supported by the system-information dependency. BSD builds are included in cross-target checks where the toolchain permits them.
 

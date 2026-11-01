@@ -533,7 +533,7 @@ fn logo_for(name: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Scene, char_density, clean_logo};
+    use super::{Scene, char_density, clean_logo, logo_for};
 
     #[test]
     fn logo_parser_removes_ansi_codes() {
@@ -552,5 +552,14 @@ mod tests {
         let scene = Scene::donut();
         assert!(!scene.points.is_empty());
         assert!(scene.extent_x > 1.0);
+    }
+
+    #[test]
+    fn distro_logo_fallbacks_cover_major_families() {
+        assert_ne!(logo_for("alpine"), logo_for("unknown-distro"));
+        assert_ne!(logo_for("macos"), logo_for("unknown-distro"));
+        assert_ne!(logo_for("freebsd"), logo_for("unknown-distro"));
+        assert_eq!(logo_for("ubuntu debian"), logo_for("ubuntu"));
+        assert_eq!(logo_for("manjaro arch"), logo_for("manjaro"));
     }
 }
