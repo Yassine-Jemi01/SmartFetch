@@ -756,6 +756,41 @@ mod tests {
     }
 
     #[test]
+    fn live_layout_never_writes_beyond_terminal_height() {
+        use crate::system::SystemSnapshot;
+
+        let snapshot = SystemSnapshot {
+            os_name: "Fedora Linux".to_string(),
+            distro_id: "fedora".to_string(),
+            host_name: "test-host".to_string(),
+            kernel: "test-kernel".to_string(),
+            cpu_name: "test-cpu".to_string(),
+            logical_cores: 4,
+            physical_cores: 2,
+            cpu_usage: 12.5,
+            cpu_temperature: None,
+            disk_usage: None,
+            gpu_info: Vec::new(),
+            used_memory: 512,
+            total_memory: 1024,
+            used_swap: 0,
+            total_swap: 1024,
+            uptime_seconds: 60,
+        };
+        let scene = Scene::donut();
+        let mut canvas = super::Canvas::new(1, 1);
+
+        let wide = super::render_live_frame(&scene, 0.0, &snapshot, 80, 24, false, &mut canvas);
+        assert_eq!(wide.len(), 24);
+
+        let narrow = super::render_live_frame(&scene, 0.0, &snapshot, 52, 24, false, &mut canvas);
+        assert_eq!(narrow.len(), 24);
+
+        let short = super::render_live_frame(&scene, 0.0, &snapshot, 52, 10, false, &mut canvas);
+        assert_eq!(short.len(), 10);
+    }
+
+    #[test]
     fn distro_logo_fallbacks_cover_major_families() {
         assert_ne!(logo_for("alpine"), logo_for("unknown-distro"));
         assert_ne!(logo_for("macos"), logo_for("unknown-distro"));
