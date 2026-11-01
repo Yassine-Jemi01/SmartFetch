@@ -247,6 +247,10 @@ fn info_lines(snapshot: &SystemSnapshot, width: usize) -> Vec<String> {
         format!("Cores    {} logical / {} physical", snapshot.logical_cores, snapshot.physical_cores),
         format!("CPU      {cpu_bar} {:>5.1}%", snapshot.cpu_usage),
         format!("Temp     {}", snapshot.cpu_temperature.map(|value| format!("{value:.0}°C")).unwrap_or_else(|| "N/A".to_string())),
+        format!("Disk     {}", snapshot.disk_usage.map(|(used, total)| {
+            let percent = percentage(used, total);
+            format!("{} / {} ({percent:.0}%)", format_bytes(used), format_bytes(total))
+        }).unwrap_or_else(|| "N/A".to_string())),
         format!("RAM      {memory_bar} {:>5.1}%", memory_percent),
         format!("         {} / {}", format_bytes(snapshot.used_memory), format_bytes(snapshot.total_memory)),
         format!("SWAP     {swap_bar} {:>5.1}%", swap_percent),

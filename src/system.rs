@@ -2,7 +2,7 @@
 use std::fs;
 use std::time::Duration;
 
-use sysinfo::{Components, CpuRefreshKind, System};
+use sysinfo::{Components, CpuRefreshKind, Disks, System};
 
 #[derive(Clone, Debug)]
 pub struct SystemSnapshot {
@@ -15,6 +15,7 @@ pub struct SystemSnapshot {
     pub physical_cores: usize,
     pub cpu_usage: f32,
     pub cpu_temperature: Option<f32>,
+    pub disk_usage: Option<(u64, u64)>,
     pub used_memory: u64,
     pub total_memory: u64,
     pub used_swap: u64,
@@ -25,6 +26,7 @@ pub struct SystemSnapshot {
 pub struct SystemSampler {
     system: System,
     components: Option<Components>,
+    disks: Option<Disks>,
 }
 
 impl SystemSampler {
@@ -40,7 +42,8 @@ impl SystemSampler {
         system.refresh_cpu_usage();
 
         let components = Components::new_with_refreshed_list().ok();
-        Ok(Self { system, components })
+        let disks = Disks::new_with_refreshed_list().ok();
+        Ok(Self { system, components, disks })
     }
 
     pub fn refresh(&mut self) -> SystemSnapshot {
@@ -48,6 +51,9 @@ impl SystemSampler {
         self.system.refresh_memory();
         if let Some(components) = &mut self.components {
             components.refresh(false);
+        }
+        if let Some(disks) = &mut self.disks {
+            disks.refresh(false);
         }
         self.snapshot()
     }
@@ -96,6 +102,19 @@ impl SystemSampler {
                 .map(|(_, temperature)| temperature)
         });
 
+        let disk_usage = self.disks.as_ref().and_then(|disks| {
+            disks
+                .iter()
+                .find(|disk| disk.mount_point() == std::path::Path::new("/"))
+                .or_else(|| disks.first())
+                .map(|disk| {
+                    let total = disk.total_space();
+                    let used = total.saturating_sub(disk.available_space());
+                    (used, total)
+                })
+                .filter(|(_, total)| *total > 0)
+        });
+
         SystemSnapshot {
             os_name,
             distro_id,
@@ -106,6 +125,7 @@ impl SystemSampler {
             physical_cores,
             cpu_usage: self.system.global_cpu_usage().clamp(0.0, 100.0),
             cpu_temperature,
+            disk_usage,
             used_memory: self.system.used_memory(),
             total_memory: self.system.total_memory(),
             used_swap: self.system.used_swap(),
