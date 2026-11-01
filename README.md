@@ -73,6 +73,10 @@ The Nix package output (`nix build .#default` / `nix run .#default`) is enabled 
 `Cargo.lock` is committed to the repository. Generate it with `cargo generate-lockfile`
 and commit it so Nix can vendor the exact dependency versions reproducibly.
 
+For a NixOS flake, add SmartFetch as an input and include
+`smartfetch.packages.${pkgs.system}.default` in `environment.systemPackages`.
+The package output supports x86_64 and ARM64 Linux, plus Intel and Apple Silicon macOS.
+
 ## Platform support
 
 The Rust system-information layer uses sysinfo, which currently supports Linux, macOS, Windows, FreeBSD, and NetBSD. The terminal interface uses crossterm, which supports Unix and Windows terminals.
