@@ -2,7 +2,7 @@
 use std::fs;
 use std::time::Duration;
 
-use sysinfo::{Components, CpuRefreshKind, Disks, System};
+use sysinfo::{Components, CpuRefreshKind, Disks, Gpus, System};
 
 #[derive(Clone, Debug)]
 pub struct SystemSnapshot {
@@ -16,6 +16,7 @@ pub struct SystemSnapshot {
     pub cpu_usage: f32,
     pub cpu_temperature: Option<f32>,
     pub disk_usage: Option<(u64, u64)>,
+    pub gpu_info: Vec<String>,
     pub used_memory: u64,
     pub total_memory: u64,
     pub used_swap: u64,
@@ -27,6 +28,7 @@ pub struct SystemSampler {
     system: System,
     components: Option<Components>,
     disks: Option<Disks>,
+    gpus: Option<Gpus>,
 }
 
 impl SystemSampler {
@@ -43,7 +45,8 @@ impl SystemSampler {
 
         let components = Components::new_with_refreshed_list().ok();
         let disks = Disks::new_with_refreshed_list().ok();
-        Ok(Self { system, components, disks })
+        let gpus = Gpus::new_with_refreshed_list().ok();
+        Ok(Self { system, components, disks, gpus })
     }
 
     pub fn refresh(&mut self) -> SystemSnapshot {
@@ -54,6 +57,9 @@ impl SystemSampler {
         }
         if let Some(disks) = &mut self.disks {
             disks.refresh(false);
+        }
+        if let Some(gpus) = &mut self.gpus {
+            gpus.refresh(false);
         }
         self.snapshot()
     }
@@ -102,6 +108,32 @@ impl SystemSampler {
                 .map(|(_, temperature)| temperature)
         });
 
+        let gpu_info = self
+            .gpus
+            .as_ref()
+            .map(|gpus| {
+                gpus.iter()
+                    .map(|gpu| {
+                        let model = gpu
+                            .model()
+                            .or_else(|| gpu.vendor())
+                            .unwrap_or("Unknown GPU");
+                        let usage = gpu
+                            .usage()
+                            .map(|value| format!(" {value}%"))
+                            .unwrap_or_default();
+                        let memory = match (gpu.used_memory(), gpu.total_memory()) {
+                            (Some(used), Some(total)) if total > 0 => {
+                                format!(" · {} / {}", format_bytes(used), format_bytes(total))
+                            }
+                            _ => String::new(),
+                        };
+                        format!("{model}{usage}{memory}")
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
         let disk_usage = self.disks.as_ref().and_then(|disks| {
             disks
                 .iter()
@@ -126,6 +158,7 @@ impl SystemSampler {
             cpu_usage: self.system.global_cpu_usage().clamp(0.0, 100.0),
             cpu_temperature,
             disk_usage,
+            gpu_info,
             used_memory: self.system.used_memory(),
             total_memory: self.system.total_memory(),
             used_swap: self.system.used_swap(),

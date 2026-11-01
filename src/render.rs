@@ -251,6 +251,7 @@ fn info_lines(snapshot: &SystemSnapshot, width: usize) -> Vec<String> {
             let percent = percentage(used, total);
             format!("{} / {} ({percent:.0}%)", format_bytes(used), format_bytes(total))
         }).unwrap_or_else(|| "N/A".to_string())),
+        format!("GPU      {}", if snapshot.gpu_info.is_empty() { "N/A".to_string() } else { snapshot.gpu_info.join(" | ") }),
         format!("RAM      {memory_bar} {:>5.1}%", memory_percent),
         format!("         {} / {}", format_bytes(snapshot.used_memory), format_bytes(snapshot.total_memory)),
         format!("SWAP     {swap_bar} {:>5.1}%", swap_percent),

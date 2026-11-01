@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 crossterm = "0.29.0"
-sysinfo = "0.40.1"
+sysinfo = { version = "0.40.1", features = ["gpu"] }
 
 [profile.release]
 opt-level = 3
