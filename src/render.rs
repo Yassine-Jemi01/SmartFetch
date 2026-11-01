@@ -221,7 +221,6 @@ fn render_live_frame(
     let columns = columns.max(1);
     let rows = rows.max(1);
     let panel_width = columns.saturating_sub(2).max(12);
-    let panel = info_lines(snapshot, panel_width);
     let status = if paused {
         "PAUSED  |  Q quit  Space resume  R refresh"
     } else {
@@ -236,7 +235,7 @@ fn render_live_frame(
         let scene_width = (columns / 3).min(48).max(20);
         let scene_height = rows.saturating_sub(1).min(24).max(1);
         let gap = 3;
-        let info_width = columns.saturating_sub(scene_width + gap).max(12);
+        let info_width = columns.saturating_sub(scene_width + gap + 1).max(12);
         canvas.resize(scene_width, scene_height);
         let artwork = render_scene(scene, angle, canvas);
         let panel = info_lines(snapshot, info_width);
@@ -270,10 +269,10 @@ fn render_live_frame(
     if output.len() >= rows {
         output.truncate(rows);
         if let Some(last) = output.last_mut() {
-            *last = colorize(status, 46, true);
+            *last = colorize(&truncate(status, columns.saturating_sub(1)), 46, true);
         }
     } else {
-        output.push(colorize(status, 46, true));
+        output.push(colorize(&truncate(status, columns.saturating_sub(1)), 46, true));
     }
 
     output.truncate(rows);
