@@ -6,13 +6,14 @@ SmartFetch is moving to a Rust-based core and terminal renderer. Rust is not inh
 
 ## Highlights
 
-- Fast static system summary.
+- Fast static system summary with distro-matched ANSI colors for the logo and information labels.
 - sfetch --live: animated 3D distro-logo relief with live CPU, RAM, swap, and uptime.
 - sfetch --live --donut: rotating 3D donut with the same live system panel.
 - sfetch --donut: shortcut for the live donut mode.
 - sfetch --logo NAME: choose a built-in logo.
 - Adaptive layout: the artwork and hardware information have a clear gap; narrow terminals switch to a stacked layout instead of squeezing the logo against the text.
-- The live renderer uses a single buffered terminal frame and refreshes system statistics once per second.
+- The live renderer rewrites existing terminal rows instead of clearing the whole screen on every frame; it clips its layout to the current terminal size and refreshes system statistics once per second.
+- Animated logos use the distro logo's detected ANSI color; `NO_COLOR=1` disables color output.
 - CPU temperature is collected through available OS sensor interfaces when exposed by the platform; unavailable sensors display N/A rather than a guessed value.
 - GPU model, utilization, and memory are collected where the operating system and graphics driver expose them (Linux, macOS, and Windows through sysinfo GPU support).
 
@@ -58,6 +59,20 @@ sfetch --version
 
 The live screen uses the terminal's alternate buffer, so it does not overwrite the shell history.
 
+## Nix
+
+Enter a reproducible Rust development environment:
+
+~~~sh
+nix develop
+cargo build --release
+cargo test --all-targets
+~~~
+
+The Nix package output (`nix build .#default` / `nix run .#default`) is enabled when
+`Cargo.lock` is committed to the repository. Generate it with `cargo generate-lockfile`
+and commit it so Nix can vendor the exact dependency versions reproducibly.
+
 ## Platform support
 
 The Rust system-information layer uses sysinfo, which currently supports Linux, macOS, Windows, FreeBSD, and NetBSD. The terminal interface uses crossterm, which supports Unix and Windows terminals.
@@ -73,7 +88,8 @@ Hardware sensor availability varies by operating system, permissions, drivers, a
 - Keep one System sampler alive instead of rebuilding it every frame.
 - Avoid process enumeration in the fetch display path.
 - Refresh changing system statistics at a one-second interval.
-- Precompute 3D scene points and reuse the character/depth buffers across frames; each frame performs only rotation, projection, depth testing, and one buffered terminal write.
+- Precompute 3D scene points and reuse the character/depth buffers across frames; each frame performs only rotation, projection, depth testing, and buffered row updates.
+- Avoid full-screen clearing during animation; clear the screen only on startup or terminal resize.
 - Release builds use LTO, one codegen unit, and stripping.
 
 ## Development
