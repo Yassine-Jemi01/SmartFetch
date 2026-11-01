@@ -294,6 +294,10 @@ fn truncate(value: &str, width: usize) -> String {
     shortened
 }
 
+fn needs_stacked_layout(columns: usize, logo_width: usize, gap: usize, panel_width: usize) -> bool {
+    columns < logo_width.saturating_add(gap).saturating_add(panel_width)
+}
+
 pub fn render_static(snapshot: &SystemSnapshot, logo_name: &str) -> String {
     let logo_lines = clean_logo(logo_for(logo_name));
     let columns = terminal::size().map(|(columns, _)| columns as usize).unwrap_or(80);
@@ -304,7 +308,7 @@ pub fn render_static(snapshot: &SystemSnapshot, logo_name: &str) -> String {
     let mut output = String::new();
 
     // Preserve a deliberate gutter. Stack the blocks when the terminal is narrow.
-    if columns >= logo_width + gap + panel_width {
+    if !needs_stacked_layout(columns, logo_width, gap, panel_width) {
         for row in 0..logo_lines.len().max(panel.len()) {
             let art = logo_lines.get(row).map(String::as_str).unwrap_or("");
             let info = panel.get(row).map(String::as_str).unwrap_or("");
@@ -498,14 +502,22 @@ fn logo_for(name: &str) -> &'static str {
         include_str!("../Ascii_art/endeavouros_ascii.txt")
     } else if name.contains("cachy") {
         include_str!("../Ascii_art/cashyos_ascii.txt")
-    } else if name.contains("mint") {
+    } else if name.contains("mint") || name.contains("lmde") {
         include_str!("../Ascii_art/linuxmint_ascii.txt")
     } else if name.contains("macos") || name.contains("darwin") {
         include_str!("../Ascii_art/macos_ascii.txt")
-    } else if name.contains("freebsd") || name.contains("netbsd") {
+    } else if name.contains("netbsd") {
+        include_str!("../Ascii_art/netbsd_ascii.txt")
+    } else if name.contains("freebsd") {
         include_str!("../Ascii_art/freebsd_ascii.txt")
     } else if name.contains("windows") {
         include_str!("../Ascii_art/windows_ascii.txt")
+    } else if name.contains("void") {
+        include_str!("../Ascii_art/void_ascii.txt")
+    } else if name.contains("solus") {
+        include_str!("../Ascii_art/solus_ascii.txt")
+    } else if name.contains("mageia") || name.contains("pclinuxos") {
+        include_str!("../Ascii_art/mageia_ascii.txt")
     } else if name.contains("alpine") {
         include_str!("../Ascii_art/alpine_ascii.txt")
     } else if name.contains("opensuse") || name.contains("suse") || name.contains("tumbleweed") {
@@ -549,7 +561,7 @@ fn logo_for(name: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Scene, char_density, clean_logo, logo_for};
+    use super::{Scene, char_density, clean_logo, logo_for, needs_stacked_layout};
 
     #[test]
     fn logo_parser_removes_ansi_codes() {
@@ -568,6 +580,12 @@ mod tests {
         let scene = Scene::donut();
         assert!(!scene.points.is_empty());
         assert!(scene.extent_x > 1.0);
+    }
+
+    #[test]
+    fn static_layout_keeps_a_real_gutter_or_stacks() {
+        assert!(needs_stacked_layout(80, 44, 6, 64));
+        assert!(!needs_stacked_layout(120, 44, 6, 64));
     }
 
     #[test]
