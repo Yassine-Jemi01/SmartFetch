@@ -2,12 +2,14 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Main    | :white_check_mark: |
+| Version | Supported |
+| ------- | --------- |
+| Main    | Yes       |
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please open an issue or contact the maintainer directly on GitHub Or check my email :
-"yassine.jemi01@gmail.com"
-.
+Please report security vulnerabilities privately to the maintainer at:
+
+yassine.jemi01@gmail.com
+
+If private reporting is not possible, open a GitHub issue without publishing exploit details. Include the affected version, platform, and steps to reproduce. Do not include personal or sensitive data.
