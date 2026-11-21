@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Wformat=2 -O2 -I./H_code
 LDLIBS = -lcurl
 GIT_HASH := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-CFLAGS += -DSF_VERSION=\\\"$(GIT_HASH)\\\"
+CFLAGS += -DSF_VERSION=\"$(GIT_HASH)\"
 
 SRC = C_code/main.c C_code/ui.c C_code/collect.c
 OBJ = $(SRC:.c=.o)
@@ -15,14 +15,14 @@ DATA_DIR ?= $(PREFIX)/share/smartfetch
 all: check-deps $(TARGET)
 
 check-deps:
-	@echo '#include <curl/curl.h>' | $(CC) -E - >/dev/null 2>&1 || { \\
-		echo "Error: libcurl development headers not found (curl/curl.h missing)."; \\
-		echo ""; \\
-		echo "Install them first:"; \\
-		echo "  Debian/Ubuntu : sudo apt install libcurl4-openssl-dev"; \\
-		echo "  Fedora        : sudo dnf install libcurl-devel"; \\
-		echo "  Arch          : sudo pacman -S curl"; \\
-		exit 1; \\
+	@echo '#include <curl/curl.h>' | $(CC) -E - >/dev/null 2>&1 || { \
+		echo "Error: libcurl development headers not found (curl/curl.h missing)."; \
+		echo ""; \
+		echo "Install them first:"; \
+		echo "  Debian/Ubuntu : sudo apt install libcurl4-openssl-dev"; \
+		echo "  Fedora        : sudo dnf install libcurl-devel"; \
+		echo "  Arch          : sudo pacman -S curl"; \
+		exit 1; \
 	}
 
 $(TARGET): $(OBJ)
