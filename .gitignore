@@ -4,7 +4,11 @@ C_code/*.o
 
 # Executables
 sfetch
-
 *.exe
+
+# Archives and local release staging
 *.zip
 SmartFetch-v1.0-windows/
+
+# Static-analysis output
+*.plist
