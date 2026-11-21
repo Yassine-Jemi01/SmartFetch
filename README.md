@@ -25,53 +25,69 @@
 
 ## Features
 
-* **Blazing Fast:** Built with pure C and Direct System APIs for minimal resource usage and maximum performance.
-* **Dynamic ASCII Art:** Automatically detects your Linux distribution (`Fedora`, `Arch`, `Debian`, etc.) and renders the corresponding logo.
-* **Terminal Color Palette:** Displays a colorful 16-color block palette at the bottom for aesthetic screenshots.
-* **Detailed System Insights:** Displays CPU specs, real-time temperatures, RAM type & usage (Linux, requires root or `cap_dac_read_search` — granted automatically by `make install`), display resolution, disk space, GPU, and OS uptime.
-* **Standard Build System:** Uses a clean `Makefile` for simple, scalable compilation across platforms.
-
----
+* **Blazing Fast:** Built with pure C and direct system APIs for minimal resource usage.
+* **Dynamic ASCII Art:** Automatically detects your Linux distribution (Fedora, Arch, Debian, etc.) and renders the corresponding logo.
+* **Terminal Color Palette:** Displays a 16-color block palette at the bottom.
+* **Detailed System Insights:** Displays CPU information, temperatures, RAM usage and type, display resolution, disk space, GPU, package counts, and OS uptime where supported.
+* **Update Check:** Uses the GitHub API over HTTPS to check the latest repository commit.
 
 ## Prerequisites
 
-SmartFetch needs `gcc`/`make` and the **libcurl development headers** (used by the `--update` checker) to build. `libcap` is optional but recommended — without it, SmartFetch can still read the RAM type when run with `sudo`, but not as a regular user.
+SmartFetch needs GCC, Make, and the libcurl development headers (used by the update checker). No Linux file capabilities are required. RAM type detection reads firmware DMI data when permissions allow it; otherwise it tries dmidecode when available or displays N/A.
 
-```bash
+~~~bash
 # Debian / Ubuntu
-sudo apt install build-essential libcurl4-openssl-dev libcap2-bin
+sudo apt install build-essential libcurl4-openssl-dev
 
 # Fedora
-sudo dnf install gcc make libcurl-devel libcap
+sudo dnf install gcc make libcurl-devel
 
 # Arch
-sudo pacman -S base-devel curl libcap
-```
+sudo pacman -S base-devel curl
+~~~
 
 ## Build & Installation
 
-Clone the repository and compile using `make`:
-
-```bash
+~~~bash
 git clone https://github.com/Yassine-Jemi01/SmartFetch.git
 cd SmartFetch
 make
+make test
 sudo make install
-```
+~~~
 
-During `sudo make install`, SmartFetch also grants itself the `cap_dac_read_search` capability (if `setcap` is available) so it can read your RAM type from `/sys/firmware/dmi/tables/DMI` without needing `sudo` every time you run it afterward.
+By default, installation places the executable in /usr/local/bin and ASCII art under /usr/local/share/smartfetch. Override PREFIX or DESTDIR for custom or staged installs.
+
+**Security:** make install does not grant Linux capabilities or other elevated privileges. The program runs as the invoking user.
 
 <p align="center">
   <img width="800" height="449" alt="sfetch" src="https://github.com/user-attachments/assets/62994abe-982b-47eb-8827-0029a0fad86b" />
 </p>
 
+## Usage
+
+~~~bash
+sfetch
+sfetch --help
+sfetch --update
+~~~
+
 ## Windows Support (Beta)
 
 Compile using GCC / MinGW from the project root:
 
-```bash
+~~~bash
 gcc C_code/main.c C_code/ui.c C_code/collect_windows.c -I./H_code -o sfetch.exe -lcurl -ladvapi32
 sfetch.exe
-```
+~~~
 
-> **Note:** Windows builds require a MinGW-compatible libcurl development package. `RAM Type`, `CPU Temp`, `OS Age`, and `Flatpak` are not currently implemented on Windows and will show `N/A`.
+Windows builds require a MinGW-compatible libcurl development package. RAM type, CPU temperature, OS age, and Flatpak counts are not currently implemented on Windows and display N/A.
+
+## Tests
+
+~~~bash
+make test
+make sanitize
+~~~
+
+The smoke tests cover help output, invalid arguments, and a normal run. The sanitizer target rebuilds with AddressSanitizer and UndefinedBehaviorSanitizer.
